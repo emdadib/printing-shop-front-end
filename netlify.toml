@@ -11,7 +11,7 @@
   status = 200
 
 [context.production.environment]
-  VITE_API_URL = "https://printing-shop-back-end.vercel.app/"
+  VITE_API_URL = "https://printing-shop-back-end.vercel.app/api"
 
 [context.deploy-preview.environment]
-  VITE_API_URL = "https://printing-shop-back-end.vercel.app/"
+  VITE_API_URL = "https://printing-shop-back-end.vercel.app/api"
