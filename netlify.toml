@@ -1,0 +1,17 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[context.production.environment]
+  VITE_API_URL = "https://printing-shop-back-end.vercel.app/"
+
+[context.deploy-preview.environment]
+  VITE_API_URL = "https://printing-shop-back-end.vercel.app/"
