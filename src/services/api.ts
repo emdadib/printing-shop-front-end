@@ -16,9 +16,19 @@ function processQueue() {
   }
 }
 
+// Get API URL based on environment
+const getApiUrl = () => {
+  // Production environment
+  if (import.meta.env.PROD) {
+    return import.meta.env.VITE_API_URL || 'https://sb-printers.uc.r.appspot.com/api'
+  }
+  // Development environment
+  return import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+}
+
 // Create axios instance
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
+  baseURL: getApiUrl(),
   timeout: 15000, // Increased timeout
   headers: {
     'Content-Type': 'application/json',
@@ -70,7 +80,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken')
         if (refreshToken) {
-          const response = await axios.post('http://localhost:3001/api/auth/refresh', {
+          const response = await axios.post(`${getApiUrl()}/auth/refresh`, {
             refreshToken,
           })
 
