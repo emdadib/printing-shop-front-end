@@ -205,19 +205,43 @@ const ProductsPage: React.FC = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await dataService.getProducts();
+      setError(null);
+      // Clear cache to ensure fresh data
+      dataService.clearProductsCache();
+      // Fetch all products by requesting a high limit to get all products
+      const response = await apiService.get('/products?limit=1000');
+      
+      console.log('Products API response:', response);
+      
+      // Handle different response formats
+      let productsList: Product[] = [];
       
       if (response.success && Array.isArray(response.data)) {
-        setProducts(response.data);
+        productsList = response.data;
       } else if (Array.isArray(response)) {
-        setProducts(response);
+        productsList = response;
+      } else if (response.data && Array.isArray(response.data)) {
+        productsList = response.data;
+      } else if (response.success && response.data && Array.isArray(response.data)) {
+        productsList = response.data;
       } else {
         console.error('Invalid products response format:', response);
-        setError('Invalid response format from server');
+        setError('Invalid response format from server. Please try refreshing the page.');
+        return;
       }
-    } catch (err) {
-      setError('Failed to load products');
+      
+      if (productsList.length > 0) {
+        setProducts(productsList);
+        console.log(`Loaded ${productsList.length} products`);
+      } else {
+        setProducts([]);
+        console.log('No products found');
+      }
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to load products';
+      setError(errorMessage);
       console.error('Products fetch error:', err);
+      setProducts([]); // Clear products on error
     } finally {
       setLoading(false);
     }

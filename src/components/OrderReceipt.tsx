@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Divider, Grid } from '@mui/material';
+import { Box, Typography, Divider, Grid, Alert } from '@mui/material';
 import { useSettings } from '@/hooks/useSettings';
 import { useCompany } from '@/contexts/CompanyContext';
 
@@ -13,6 +13,7 @@ interface OrderReceiptProps {
       lastName: string;
       email: string;
       phone?: string;
+      isWalkIn?: boolean;
     };
     status: string;
     type: string;
@@ -38,7 +39,23 @@ const OrderReceipt: React.FC<OrderReceiptProps> = ({ order, dueAmount }) => {
   const { formatCurrency } = useSettings();
   const { companyInfo } = useCompany();
 
+  // Check if customer is walking customer or doesn't have a proper name
+  const customer = order.customer;
+  const isWalkingCustomer = customer?.isWalkIn === true;
+  const hasNoName = !customer?.firstName || 
+                    customer.firstName.trim() === '' || 
+                    customer.firstName.toLowerCase() === 'walk-in' ||
+                    (customer.firstName === 'Walk-in' && customer.lastName === 'Customer');
+  
+  const cannotPrint = isWalkingCustomer || hasNoName;
+
   const handlePrint = () => {
+    // Validate before printing
+    if (cannotPrint) {
+      alert('Error: Cannot print receipt. Customer must have a valid name. Walking customers or customers without names are not allowed for receipt printing.');
+      return;
+    }
+
     const printContent = document.getElementById('order-receipt');
     if (printContent) {
       const originalContents = document.body.innerHTML;
@@ -51,18 +68,27 @@ const OrderReceipt: React.FC<OrderReceiptProps> = ({ order, dueAmount }) => {
 
   return (
     <Box>
+      {/* Error Alert */}
+      {cannotPrint && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Cannot print receipt: Customer must have a valid name. Walking customers or customers without names are not allowed for receipt printing.
+        </Alert>
+      )}
+
       {/* Print Button */}
       <Box mb={2} sx={{ '@media print': { display: 'none' } }}>
         <button
           onClick={handlePrint}
+          disabled={cannotPrint}
           style={{
             padding: '10px 20px',
-            backgroundColor: '#1976d2',
+            backgroundColor: cannotPrint ? '#ccc' : '#1976d2',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px'
+            cursor: cannotPrint ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            opacity: cannotPrint ? 0.6 : 1
           }}
         >
           Print Receipt

@@ -21,7 +21,8 @@ import {
   Inventory,
   AttachMoney,
   Schedule,
-  Warning
+  Warning,
+  ContentCopy
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
@@ -137,13 +138,57 @@ const DashboardPage: React.FC = () => {
   return (
     <Box p={3}>
       {/* Welcome Header */}
-      <Box mb={3}>
-        <Typography variant="h4" gutterBottom>
-          Welcome back, {user?.firstName}!
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Here's what's happening with your printing shop today.
-        </Typography>
+      <Box mb={3} display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Welcome back, {user?.firstName}!
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Here's what's happening with your printing shop today.
+          </Typography>
+        </Box>
+        <Box display="flex" flexWrap="wrap" gap={1.5} sx={{ justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+          <Button 
+            variant="contained" 
+            startIcon={<ShoppingCart />}
+            onClick={() => navigate('/orders')}
+            size="small"
+          >
+            New Order
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<People />}
+            onClick={() => navigate('/customers')}
+            size="small"
+          >
+            Add Customer
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<Inventory />}
+            onClick={() => navigate('/inventory')}
+            size="small"
+          >
+            Update Inventory
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<AttachMoney />}
+            onClick={() => navigate('/orders')}
+            size="small"
+          >
+            Process Payment
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<ContentCopy />}
+            onClick={() => navigate('/photocopy')}
+            size="small"
+          >
+            Photocopy Service
+          </Button>
+        </Box>
       </Box>
 
       {/* Key Metrics */}
@@ -369,50 +414,6 @@ const DashboardPage: React.FC = () => {
         </Grid>
       </Grid>
 
-      {/* Quick Actions */}
-      <Box mt={3}>
-        <Typography variant="h6" gutterBottom>
-          Quick Actions
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item>
-            <Button 
-              variant="contained" 
-              startIcon={<ShoppingCart />}
-              onClick={() => navigate('/orders')}
-            >
-              New Order
-            </Button>
-          </Grid>
-          <Grid item>
-            <Button 
-              variant="outlined" 
-              startIcon={<People />}
-              onClick={() => navigate('/customers')}
-            >
-              Add Customer
-            </Button>
-          </Grid>
-          <Grid item>
-            <Button 
-              variant="outlined" 
-              startIcon={<Inventory />}
-              onClick={() => navigate('/inventory')}
-            >
-              Update Inventory
-            </Button>
-          </Grid>
-          <Grid item>
-            <Button 
-              variant="outlined" 
-              startIcon={<AttachMoney />}
-              onClick={() => navigate('/orders')}
-            >
-              Process Payment
-            </Button>
-          </Grid>
-        </Grid>
-      </Box>
     </Box>
   );
 };

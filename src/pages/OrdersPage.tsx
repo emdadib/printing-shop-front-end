@@ -620,6 +620,19 @@ const OrdersPage: React.FC = () => {
 
   // Receipt functions
   const handleOpenReceiptDialog = (order: Order) => {
+    // Validate customer has a proper name
+    const customer = order.customer;
+    const isWalkingCustomer = customer?.isWalkIn === true;
+    const hasNoName = !customer?.firstName || 
+                      customer.firstName.trim() === '' || 
+                      customer.firstName.toLowerCase() === 'walk-in' ||
+                      (customer.firstName === 'Walk-in' && customer.lastName === 'Customer');
+    
+    if (isWalkingCustomer || hasNoName) {
+      setError('Cannot print receipt: Customer must have a valid name. Walking customers or customers without names are not allowed for receipt printing.');
+      return;
+    }
+    
     setSelectedOrderForReceipt(order);
     setOpenReceiptDialog(true);
   };
