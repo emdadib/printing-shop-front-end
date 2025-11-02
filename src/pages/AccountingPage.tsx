@@ -33,7 +33,6 @@ import {
   AccountBalance as AccountIcon,
   People as PeopleIcon,
   Business as BusinessIcon,
-  TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
@@ -1192,7 +1191,7 @@ const AccountingPage: React.FC = () => {
                         InputProps={{
                           startAdornment: <InputAdornment position="start">$</InputAdornment>
                         }}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => field.onChange(e.target.value)}
                         value={field.value || ''}
                       />
                     );
