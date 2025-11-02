@@ -25,13 +25,17 @@ import {
   Select,
   MenuItem,
   Chip,
-  TablePagination
+  TablePagination,
+  InputAdornment
 } from '@mui/material';
 import {
   Add as AddIcon,
   AccountBalance as AccountIcon,
   People as PeopleIcon,
   Business as BusinessIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -73,6 +77,32 @@ interface AccountingSummary {
   netPosition: number;
 }
 
+interface ProfitSummary {
+  total: {
+    deposits: number;
+    withdrawals: number;
+    netProfit: number;
+  };
+  regular: {
+    deposits: number;
+    withdrawals: number;
+    netProfit: number;
+  };
+  investor: {
+    deposits: number;
+    withdrawals: number;
+    netProfit: number;
+  };
+  transactions: Array<{
+    id: string;
+    type: 'DEBIT' | 'CREDIT';
+    amount: number;
+    description: string;
+    date: string;
+    reference?: string;
+  }>;
+}
+
 // Validation schemas
 const transactionSchema = yup.object({
   type: yup.string().required('Transaction type is required'),
@@ -80,6 +110,15 @@ const transactionSchema = yup.object({
   description: yup.string().required('Description is required'),
   reference: yup.string().optional(),
   date: yup.date().required('Date is required')
+});
+
+const profitSchema = yup.object({
+  amount: yup.number().positive('Amount must be positive').required('Amount is required'),
+  accountType: yup.string().oneOf(['CASH', 'BANK'], 'Account type must be CASH or BANK').required('Account type is required'),
+  profitType: yup.string().oneOf(['PROFIT', 'INVESTOR_PROFIT'], 'Profit type must be PROFIT or INVESTOR_PROFIT'),
+  description: yup.string().optional(),
+  reference: yup.string().optional(),
+  date: yup.string().required('Date is required')
 });
 
 const AccountingPage: React.FC = () => {
@@ -99,6 +138,14 @@ const AccountingPage: React.FC = () => {
   const [transactionType, setTransactionType] = useState<'customer' | 'supplier' | 'company'>('customer');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  // Profit management state
+  const [profitSummary, setProfitSummary] = useState<ProfitSummary | null>(null);
+  const [openProfitDialog, setOpenProfitDialog] = useState(false);
+  const [profitDialogType, setProfitDialogType] = useState<'deposit' | 'withdraw'>('deposit');
+  const [openCalculateDialog, setOpenCalculateDialog] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [calculationResult, setCalculationResult] = useState<any>(null);
 
   const {
     control,
@@ -113,6 +160,52 @@ const AccountingPage: React.FC = () => {
       description: '',
       reference: '',
       date: new Date()
+    }
+  });
+
+  const {
+    control: profitControl,
+    handleSubmit: handleProfitSubmit,
+    reset: resetProfit,
+    formState: { errors: profitErrors }
+  } = useForm({
+    resolver: yupResolver(profitSchema),
+    defaultValues: {
+      amount: 0,
+      accountType: 'CASH',
+      profitType: 'PROFIT',
+      description: '',
+      reference: '',
+      date: new Date().toISOString().split('T')[0]
+    }
+  });
+
+  // Form for profit calculation
+  const calculateProfitSchema = yup.object({
+    startDate: yup.string().required('Start date is required'),
+    endDate: yup.string().required('End date is required').test(
+      'is-after-start',
+      'End date must be after start date',
+      function(value) {
+        const { startDate } = this.parent;
+        if (!startDate || !value) return true;
+        return new Date(value) >= new Date(startDate);
+      }
+    ),
+    description: yup.string().optional()
+  });
+
+  const {
+    control: calculateControl,
+    handleSubmit: handleCalculateSubmit,
+    reset: resetCalculate,
+    formState: { errors: calculateErrors }
+  } = useForm({
+    resolver: yupResolver(calculateProfitSchema),
+    defaultValues: {
+      startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
+      endDate: new Date().toISOString().split('T')[0], // Today
+      description: ''
     }
   });
 
@@ -210,11 +303,31 @@ const AccountingPage: React.FC = () => {
     }
   };
 
+  const fetchProfitSummary = async () => {
+    try {
+      const response = await apiService.get('/accounting/profit/summary');
+      if (response.success && response.data) {
+        setProfitSummary(response.data);
+      } else {
+        setProfitSummary(response);
+      }
+    } catch (error) {
+      console.error('Error fetching profit summary:', error);
+    }
+  };
+
   useEffect(() => {
     fetchCustomers();
     fetchSuppliers();
     fetchSummary();
+    fetchProfitSummary();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 3) {
+      fetchProfitSummary();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -287,6 +400,141 @@ const AccountingPage: React.FC = () => {
     if (balance > 0) return 'success';
     if (balance < 0) return 'error';
     return 'default';
+  };
+
+  const handleOpenProfitDialog = (type: 'deposit' | 'withdraw') => {
+    try {
+      // Set dialog type first
+      setProfitDialogType(type);
+      // Reset form with default values
+      resetProfit({
+        amount: 0,
+        accountType: 'CASH',
+        profitType: 'PROFIT',
+        description: '',
+        reference: '',
+        date: new Date().toISOString().split('T')[0]
+      });
+      // Then open dialog
+      setOpenProfitDialog(true);
+    } catch (error) {
+      console.error('Error opening profit dialog:', error);
+      alert('Failed to open profit dialog. Please try again.');
+    }
+  };
+
+  const handleCloseProfitDialog = () => {
+    setOpenProfitDialog(false);
+    resetProfit();
+  };
+
+  const handleOpenCalculateDialog = () => {
+    setOpenCalculateDialog(true);
+    setCalculationResult(null);
+    resetCalculate({
+      startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0],
+      description: ''
+    });
+  };
+
+  const handleCloseCalculateDialog = () => {
+    setOpenCalculateDialog(false);
+    setCalculationResult(null);
+    resetCalculate();
+  };
+
+  const handleCalculateProfit = async (data: any) => {
+    try {
+      setCalculating(true);
+      setCalculationResult(null);
+
+      const response = await apiService.post('/accounting/profit/calculate', {
+        startDate: data.startDate,
+        endDate: data.endDate,
+        description: data.description || undefined
+      });
+
+      if (response && typeof response === 'object') {
+        if ('success' in response && response.success === false) {
+          const errorMsg = (response as any).error || (response as any).message || 'Failed to calculate profit';
+          alert(errorMsg);
+          setCalculating(false);
+          return;
+        }
+
+        setCalculationResult(response.data || response);
+        
+        // Refresh profit summary and company ledger after calculation
+        if ((response as any).data?.recorded) {
+          setTimeout(() => {
+            fetchProfitSummary();
+            fetchCompanyLedger();
+            fetchSummary();
+          }, 500);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error calculating profit:', error);
+      const errorMsg = error?.response?.data?.error || 
+                      error?.response?.data?.message || 
+                      error?.message || 
+                      'Failed to calculate profit';
+      alert(errorMsg);
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  const handleSubmitProfit = async (data: any) => {
+    try {
+      // For withdrawals, validate against available equity balance
+      if (profitDialogType === 'withdraw') {
+        const withdrawalAmount = parseFloat(data.amount) || 0;
+        const availableBalance = profitSummary?.total?.netProfit || 0;
+        
+        if (withdrawalAmount > availableBalance) {
+          alert(`Insufficient equity balance. Available: ${formatCurrency(availableBalance)}, Requested: ${formatCurrency(withdrawalAmount)}`);
+          return;
+        }
+      }
+
+      const endpoint = profitDialogType === 'deposit' 
+        ? '/accounting/profit/deposit'
+        : '/accounting/profit/withdraw';
+
+      // Ensure amount is a number
+      const submitData = {
+        ...data,
+        amount: parseFloat(data.amount) || 0
+      };
+
+      // Convert date string to proper format if needed
+      if (submitData.date && typeof submitData.date === 'string') {
+        submitData.date = new Date(submitData.date).toISOString();
+      }
+
+      const response = await apiService.post(endpoint, submitData);
+      
+      // Check if response has success flag
+      if (response && typeof response === 'object' && 'success' in response && (response as any).success === false) {
+        const errorMsg = (response as any).error || (response as any).message || 'Failed to process profit transaction';
+        alert(errorMsg);
+        return;
+      }
+
+      handleCloseProfitDialog();
+      fetchProfitSummary();
+      fetchCompanyLedger();
+      fetchSummary();
+    } catch (error: any) {
+      console.error('Error processing profit:', error);
+      const errorMsg = error?.response?.data?.error || 
+                      error?.response?.data?.message || 
+                      error?.message || 
+                      'Failed to process profit transaction';
+      alert(errorMsg);
+    }
   };
 
   const getFilteredCustomers = () => {
@@ -513,6 +761,144 @@ const AccountingPage: React.FC = () => {
     </Box>
   );
 
+  const renderProfitManagement = () => (
+    <Box>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6}>
+          <Typography variant="h6">Profit Management</Typography>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<MoneyIcon />}
+              onClick={handleOpenCalculateDialog}
+            >
+              Calculate Profit
+            </Button>
+            <Button
+              variant="contained"
+              color="warning"
+              startIcon={<TrendingDownIcon />}
+              onClick={() => handleOpenProfitDialog('withdraw')}
+            >
+              Withdraw Profit
+            </Button>
+          </Box>
+        </Grid>
+      </Grid>
+
+      {profitSummary && profitSummary.total && profitSummary.regular && profitSummary.investor && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={4}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Total Net Profit
+                </Typography>
+                <Typography variant="h4" color={(profitSummary.total?.netProfit || 0) >= 0 ? 'success.main' : 'error.main'}>
+                  {formatCurrency(profitSummary.total?.netProfit || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Deposits: {formatCurrency(profitSummary.total?.deposits || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Withdrawals: {formatCurrency(profitSummary.total?.withdrawals || 0)}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Regular Profit
+                </Typography>
+                <Typography variant="h4" color={(profitSummary.regular?.netProfit || 0) >= 0 ? 'success.main' : 'error.main'}>
+                  {formatCurrency(profitSummary.regular?.netProfit || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Deposits: {formatCurrency(profitSummary.regular?.deposits || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Withdrawals: {formatCurrency(profitSummary.regular?.withdrawals || 0)}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Investor Profit
+                </Typography>
+                <Typography variant="h4" color={(profitSummary.investor?.netProfit || 0) >= 0 ? 'success.main' : 'error.main'}>
+                  {formatCurrency(profitSummary.investor?.netProfit || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Deposits: {formatCurrency(profitSummary.investor?.deposits || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Withdrawals: {formatCurrency(profitSummary.investor?.withdrawals || 0)}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {profitSummary && profitSummary.transactions && profitSummary.transactions.length > 0 && (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Date</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Description</TableCell>
+                <TableCell>Reference</TableCell>
+                <TableCell align="right">Amount</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {profitSummary.transactions.map((transaction) => (
+                <TableRow key={transaction.id}>
+                  <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={transaction.type}
+                      color={transaction.type === 'CREDIT' ? 'success' : 'error'}
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell>{transaction.description}</TableCell>
+                  <TableCell>{transaction.reference || '-'}</TableCell>
+                  <TableCell align="right">{formatCurrency(transaction.amount)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {profitSummary && (!profitSummary.transactions || profitSummary.transactions.length === 0) && (
+        <Paper sx={{ p: 3, textAlign: 'center' }}>
+          <Typography variant="body1" color="textSecondary">
+            No profit transactions yet. Start by depositing or withdrawing profit.
+          </Typography>
+        </Paper>
+      )}
+
+      {!profitSummary && (
+        <Paper sx={{ p: 3, textAlign: 'center' }}>
+          <Typography variant="body1" color="textSecondary">
+            Loading profit summary...
+          </Typography>
+        </Paper>
+      )}
+    </Box>
+  );
+
   const renderCompanyLedger = () => (
     <Box>
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -660,6 +1046,7 @@ const AccountingPage: React.FC = () => {
           <Tab icon={<PeopleIcon />} label="Customer Ledger" />
           <Tab icon={<BusinessIcon />} label="Supplier Ledger" />
           <Tab icon={<AccountIcon />} label="Company Ledger" />
+          <Tab icon={<MoneyIcon />} label="Profit Management" />
         </Tabs>
       </Paper>
 
@@ -667,6 +1054,7 @@ const AccountingPage: React.FC = () => {
         {activeTab === 0 && renderCustomerLedger()}
         {activeTab === 1 && renderSupplierLedger()}
         {activeTab === 2 && renderCompanyLedger()}
+        {activeTab === 3 && renderProfitManagement()}
       </Box>
 
       {/* Transaction Dialog */}
@@ -758,6 +1146,287 @@ const AccountingPage: React.FC = () => {
           <DialogActions>
             <Button onClick={handleCloseTransactionDialog}>Cancel</Button>
             <Button type="submit" variant="contained">Add Transaction</Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Profit Dialog */}
+      {openProfitDialog && profitDialogType && (
+        <Dialog open={openProfitDialog} onClose={handleCloseProfitDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {profitDialogType === 'deposit' ? 'Deposit Profit' : 'Withdraw Profit'}
+          </DialogTitle>
+          <form onSubmit={handleProfitSubmit(handleSubmitProfit)}>
+          <DialogContent>
+            {profitDialogType === 'withdraw' && profitSummary && (
+              <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Available Equity Balance:
+                </Typography>
+                <Typography variant="h6" color={(profitSummary.total?.netProfit || 0) >= 0 ? 'success.main' : 'error.main'}>
+                  {formatCurrency(profitSummary.total?.netProfit || 0)}
+                </Typography>
+              </Box>
+            )}
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="amount"
+                  control={profitControl}
+                  render={({ field }) => {
+                    const fieldValue = parseFloat(field.value) || 0;
+                    const availableBalance = profitSummary?.total?.netProfit || 0;
+                    const exceedsBalance = profitDialogType === 'withdraw' && fieldValue > availableBalance;
+                    
+                    return (
+                      <TextField
+                        {...field}
+                        label="Amount *"
+                        type="number"
+                        fullWidth
+                        error={!!profitErrors.amount || exceedsBalance}
+                        helperText={
+                          profitErrors.amount?.message || 
+                          (exceedsBalance ? `Exceeds available balance of ${formatCurrency(availableBalance)}` : '')
+                        }
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">$</InputAdornment>
+                        }}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        value={field.value || ''}
+                      />
+                    );
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="accountType"
+                  control={profitControl}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!profitErrors.accountType}>
+                      <InputLabel>Account Type *</InputLabel>
+                      <Select {...field} label="Account Type *">
+                        <MenuItem value="CASH">Cash</MenuItem>
+                        <MenuItem value="BANK">Bank</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="profitType"
+                  control={profitControl}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Profit Type</InputLabel>
+                      <Select {...field} label="Profit Type">
+                        <MenuItem value="PROFIT">Regular Profit</MenuItem>
+                        <MenuItem value="INVESTOR_PROFIT">Investor Profit</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="date"
+                  control={profitControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Date *"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      error={!!profitErrors.date}
+                      helperText={profitErrors.date?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Controller
+                  name="description"
+                  control={profitControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Description (Optional)"
+                      fullWidth
+                      multiline
+                      rows={2}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Controller
+                  name="reference"
+                  control={profitControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Reference (Optional)"
+                      fullWidth
+                    />
+                  )}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseProfitDialog}>Cancel</Button>
+            <Button 
+              type="submit" 
+              variant="contained"
+              color={profitDialogType === 'deposit' ? 'success' : 'warning'}
+            >
+              {profitDialogType === 'deposit' ? 'Deposit' : 'Withdraw'}
+            </Button>
+          </DialogActions>
+          </form>
+        </Dialog>
+      )}
+
+      {/* Calculate Profit Dialog */}
+      <Dialog open={openCalculateDialog} onClose={handleCloseCalculateDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Calculate Profit from Sales</DialogTitle>
+        <form onSubmit={handleCalculateSubmit(handleCalculateProfit)}>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="textSecondary" gutterBottom>
+                  This will automatically calculate profit from your sales revenue minus cost of goods sold and operating expenses, then record it to equity.
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="startDate"
+                  control={calculateControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Start Date *"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      error={!!calculateErrors.startDate}
+                      helperText={calculateErrors.startDate?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="endDate"
+                  control={calculateControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="End Date *"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      error={!!calculateErrors.endDate}
+                      helperText={calculateErrors.endDate?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Controller
+                  name="description"
+                  control={calculateControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Description (Optional)"
+                      fullWidth
+                      multiline
+                      rows={2}
+                      placeholder="e.g., January 2024 Profit Calculation"
+                    />
+                  )}
+                />
+              </Grid>
+
+              {/* Calculation Results */}
+              {calculationResult && (
+                <Grid item xs={12}>
+                  <Card sx={{ mt: 2, bgcolor: 'background.paper' }}>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Calculation Results
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="textSecondary">
+                            Total Revenue
+                          </Typography>
+                          <Typography variant="h6" color="success.main">
+                            {formatCurrency(calculationResult.calculation?.totalRevenue || 0)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="textSecondary">
+                            Cost of Goods Sold
+                          </Typography>
+                          <Typography variant="h6" color="error.main">
+                            {formatCurrency(calculationResult.calculation?.totalCOGS || 0)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="textSecondary">
+                            Operating Expenses
+                          </Typography>
+                          <Typography variant="h6" color="error.main">
+                            {formatCurrency(calculationResult.calculation?.totalExpenses || 0)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="textSecondary">
+                            Net Profit / Loss
+                          </Typography>
+                          <Typography 
+                            variant="h6" 
+                            color={(calculationResult.calculation?.netProfit || 0) >= 0 ? 'success.main' : 'error.main'}
+                          >
+                            {formatCurrency(calculationResult.calculation?.netProfit || 0)}
+                          </Typography>
+                        </Grid>
+                        {calculationResult.recorded && (
+                          <Grid item xs={12}>
+                            <Chip
+                              label="✓ Profit recorded to equity"
+                              color="success"
+                              size="small"
+                              sx={{ mt: 1 }}
+                            />
+                          </Grid>
+                        )}
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseCalculateDialog}>
+              {calculationResult ? 'Close' : 'Cancel'}
+            </Button>
+            {!calculationResult && (
+              <Button 
+                type="submit" 
+                variant="contained"
+                color="primary"
+                disabled={calculating}
+              >
+                {calculating ? 'Calculating...' : 'Calculate & Record'}
+              </Button>
+            )}
           </DialogActions>
         </form>
       </Dialog>

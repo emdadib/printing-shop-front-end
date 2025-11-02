@@ -13,6 +13,7 @@ import ProductsPage from '@/pages/ProductsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
 import InventoryPage from '@/pages/InventoryPage'
 import OrdersPage from '@/pages/OrdersPage'
+import POSOrderPage from '@/pages/POSOrderPage'
 import CustomersPage from '@/pages/CustomersPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage'
@@ -95,32 +96,39 @@ const App: React.FC = () => {
   return (
     <CompanyProvider>
       <CurrencyProvider>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/products" element={<ProductsPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/suppliers" element={<SuppliersPage />} />
-            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
-            <Route path="/accounting" element={<AccountingPage />} />
-            <Route path="/expenses" element={<ExpensePage />} />
-            <Route path="/users" element={<UserManagementPage />} />
-            <Route path="/user-management" element={<UserManagementPage />} />
-            <Route path="/salary-management" element={<CombinedSalaryPage />} />
-            <Route path="/salary-advances" element={<CombinedSalaryPage />} />
-            <Route path="/permission-management" element={<PermissionManagementPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/warranties" element={<WarrantiesPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/profile" element={<UserProfilePage />} />
-            {photocopyEnabled && <Route path="/photocopy" element={<PhotocopyPage />} />}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </Layout>
+        <Routes>
+          {/* POS page without Layout for full-screen experience */}
+          <Route path="/pos" element={<POSOrderPage />} />
+          {/* Other pages with Layout */}
+          <Route path="*" element={
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/categories" element={<CategoriesPage />} />
+                <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/suppliers" element={<SuppliersPage />} />
+                <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+                <Route path="/accounting" element={<AccountingPage />} />
+                <Route path="/expenses" element={<ExpensePage />} />
+                <Route path="/users" element={<UserManagementPage />} />
+                <Route path="/user-management" element={<UserManagementPage />} />
+                <Route path="/salary-management" element={<CombinedSalaryPage />} />
+                <Route path="/salary-advances" element={<CombinedSalaryPage />} />
+                <Route path="/permission-management" element={<PermissionManagementPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/warranties" element={<WarrantiesPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/profile" element={<UserProfilePage />} />
+                {photocopyEnabled && <Route path="/photocopy" element={<PhotocopyPage />} />}
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </Layout>
+          } />
+        </Routes>
       </CurrencyProvider>
     </CompanyProvider>
   )
