@@ -1173,7 +1173,7 @@ const AccountingPage: React.FC = () => {
                   name="amount"
                   control={profitControl}
                   render={({ field }) => {
-                    const fieldValue = parseFloat(field.value) || 0;
+                    const fieldValue = parseFloat(String(field.value || '')) || 0;
                     const availableBalance = profitSummary?.total?.netProfit || 0;
                     const exceedsBalance = profitDialogType === 'withdraw' && fieldValue > availableBalance;
                     
