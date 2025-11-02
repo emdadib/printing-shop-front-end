@@ -20,13 +20,8 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Alert,
   Snackbar,
-  Tooltip,
   Badge,
 } from '@mui/material';
 import {
@@ -35,7 +30,6 @@ import {
   Search,
   ShoppingCart,
   Close,
-  Person,
   Delete,
   Payment,
 } from '@mui/icons-material';
@@ -92,7 +86,6 @@ const POSOrderPage: React.FC = () => {
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [productTypeFilter, setProductTypeFilter] = useState<string>('ALL');
-  const [openCustomerDialog, setOpenCustomerDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -108,7 +101,6 @@ const POSOrderPage: React.FC = () => {
     control,
     handleSubmit,
     reset,
-    watch,
     formState: { errors },
   } = useForm({
     resolver: yupResolver(orderSchema),
@@ -118,8 +110,6 @@ const POSOrderPage: React.FC = () => {
       notes: '',
     },
   });
-
-  const selectedCustomerId = watch('customerId');
 
   useEffect(() => {
     fetchProducts();
