@@ -11,7 +11,7 @@
   status = 200
 
 [context.production.environment]
-  VITE_API_URL = "https://printing-shop-backend-791252910223.us-central1.run.app/api"
+  VITE_API_URL = "https://printing-shop-backend-fjm2hbzd2a-as.a.run.app/api"
 
 [context.deploy-preview.environment]
-  VITE_API_URL = "https://printing-shop-backend-791252910223.us-central1.run.app/api"
+  VITE_API_URL = "https://printing-shop-backend-fjm2hbzd2a-as.a.run.app/api"
