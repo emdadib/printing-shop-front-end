@@ -34,6 +34,7 @@ import {
   Menu,
   Tooltip,
   Chip,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -44,8 +45,10 @@ import {
   MoreVert,
   Payment,
   Print,
-  CheckCircle
+  CheckCircle,
+  PointOfSale
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -123,12 +126,18 @@ const orderSchema = yup.object({
 
 
 const OrdersPage: React.FC = () => {
+  const navigate = useNavigate();
   const { formatCurrency, getSettingValue } = useSettings();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'warning' | 'info';
+  }>({ open: false, message: '', severity: 'success' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [openDialog, setOpenDialog] = useState(false);
@@ -335,6 +344,14 @@ const OrdersPage: React.FC = () => {
     setDiscountType('AMOUNT');
   };
 
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
   const handleOpenDetailsDialog = async (order: Order) => {
     setSelectedOrder(order);
     setOpenDetailsDialog(true);
@@ -513,43 +530,129 @@ const OrdersPage: React.FC = () => {
 
       // Create the order
       const orderResponse = await apiService.post('/orders', orderData);
-      const createdOrder = orderResponse.data || orderResponse;
-
-      // If payment amount is provided, create payment
-      if (paymentAmount > 0) {
-        try {
-          const paymentData = {
-            customerId: data.customerId,
-            orderId: createdOrder.id,
-            amount: paymentAmount,
-            paymentMethod,
-            notes: `Payment for order ${createdOrder.orderNumber}`
-          };
-
-          console.log('Creating payment with data:', paymentData);
-          const paymentResponse = await apiService.post('/payments', paymentData);
-          console.log('Payment created successfully:', paymentResponse.data);
-          
-          // Refresh due amounts after payment creation
-          setTimeout(() => {
-            fetchDueAmounts();
-          }, 1000);
-        } catch (paymentError) {
-          console.error('Payment creation failed:', paymentError);
-          setError('Order created but payment failed. Please process payment separately.');
+      
+      // Handle response structure: apiService returns response.data, which is { success: true, data: order }
+      // Check if response has success flag
+      if (orderResponse && typeof orderResponse === 'object' && 'success' in orderResponse) {
+        if (!orderResponse.success) {
+          const errorMsg = orderResponse.message || 'Failed to create order';
+          setError(errorMsg);
+          console.error('Order creation failed:', orderResponse);
+          return;
         }
       }
 
-      fetchOrders();
+      // Extract order data from response
+      const createdOrder = orderResponse?.data || orderResponse;
+
+      if (!createdOrder || !createdOrder.id) {
+        console.error('Invalid order response:', orderResponse);
+        setError('Order created but received invalid response. Please refresh the page.');
+        return;
+      }
+
+      console.log('Order created successfully:', createdOrder);
+
+      // Track if payment was successful
+      let paymentSuccess = true;
+      
+      // If payment amount is provided, create payment
+      if (paymentAmount > 0) {
+        try {
+          // Get the actual customer ID from the created order (not from data.customerId which might be 'walk-in')
+          const actualCustomerId = createdOrder.customerId || createdOrder.customer?.id;
+          
+          if (!actualCustomerId) {
+            console.error('No customer ID found in created order:', createdOrder);
+            setError('Order created successfully, but payment failed: Customer ID not found. Please process payment separately.');
+            paymentSuccess = false;
+          } else {
+            const paymentData = {
+              customerId: actualCustomerId,
+              orderId: createdOrder.id,
+              amount: paymentAmount,
+              paymentMethod,
+              notes: `Payment for order ${createdOrder.orderNumber || createdOrder.id}`
+            };
+
+            console.log('Creating payment with data:', paymentData);
+            const paymentResponse = await apiService.post('/payments', paymentData);
+            
+            // Check if payment was successful
+            if (paymentResponse && typeof paymentResponse === 'object') {
+              if ('success' in paymentResponse && !paymentResponse.success) {
+                const errorMsg = paymentResponse.message || 'Payment creation failed';
+                setError(`Order created successfully, but payment failed: ${errorMsg}. Please process payment separately.`);
+                paymentSuccess = false;
+                console.error('Payment creation failed:', paymentResponse);
+              } else {
+                console.log('Payment created successfully:', paymentResponse);
+                // Refresh due amounts after payment creation
+                setTimeout(() => {
+                  fetchDueAmounts();
+                }, 1000);
+              }
+            } else {
+              // Assume success if response structure is unexpected
+              console.log('Payment created successfully (unexpected response format):', paymentResponse);
+              setTimeout(() => {
+                fetchDueAmounts();
+              }, 1000);
+            }
+          }
+        } catch (paymentError: any) {
+          console.error('Payment creation failed:', paymentError);
+          const errorMessage = paymentError?.response?.data?.message || paymentError?.message || 'Unknown error';
+          setError(`Order created successfully, but payment failed: ${errorMessage}. Please process payment separately.`);
+          paymentSuccess = false;
+          // Don't return here - allow order creation to complete
+        }
+      }
+
+      // Refresh orders and due amounts
+      try {
+        await fetchOrders();
+      } catch (fetchError) {
+        console.error('Error fetching orders after creation:', fetchError);
+        // Don't show error to user - order was created successfully
+      }
+      
+      // Close dialog - order was created successfully
+      handleCloseDialog();
+      
+      // Show appropriate success/error messages
+      if (paymentSuccess || paymentAmount === 0) {
+        setError(null);
+        // Show success message
+        if (paymentAmount > 0) {
+          showSnackbar('Order and payment created successfully!', 'success');
+        } else {
+          showSnackbar('Order created successfully!', 'success');
+        }
+      } else {
+        // Payment failed but order succeeded
+        showSnackbar('Order created successfully, but payment failed. Please process payment separately.', 'warning');
+      }
+      
       // Refresh due amounts after order/payment creation
       setTimeout(() => {
-        fetchDueAmounts();
+        fetchDueAmounts().catch(err => {
+          console.error('Error fetching due amounts:', err);
+        });
       }, 1000);
-      handleCloseDialog();
-      setError(null);
-    } catch (err) {
-      setError('Failed to create order');
+    } catch (err: any) {
       console.error('Order creation error:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to create order';
+      setError(errorMessage);
+      
+      // Check if order might have been created despite error
+      if (err?.response?.status === 201 || err?.response?.status === 200) {
+        // Order was created, just refresh
+        fetchOrders();
+        setTimeout(() => {
+          fetchDueAmounts();
+        }, 1000);
+      }
     }
   };
 
@@ -692,13 +795,23 @@ const OrdersPage: React.FC = () => {
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Orders</Typography>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleOpenDialog}
-        >
-          New Order
-        </Button>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<PointOfSale />}
+            onClick={() => navigate('/pos')}
+          >
+            POS Mode
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleOpenDialog}
+          >
+            New Order
+          </Button>
+        </Box>
       </Box>
 
       {error && (
@@ -1452,8 +1565,20 @@ const OrdersPage: React.FC = () => {
           <Button onClick={handleCloseReceiptDialog}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for success/error notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
 
-export default OrdersPage; 
+export default OrdersPage;  

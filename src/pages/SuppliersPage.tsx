@@ -79,30 +79,30 @@ interface SupplierStats {
 
 const supplierSchema = yup.object({
   name: yup.string().required('Name is required'),
-  company: yup.string().optional(),
-  email: yup.string().email('Invalid email').optional(),
+  company: yup.string().nullable().optional(),
+  email: yup.string().email('Invalid email').nullable().optional(),
   phone: yup.string().required('Phone is required'),
-  address: yup.string().optional(),
-  city: yup.string().optional(),
-  state: yup.string().optional(),
-  zipCode: yup.string().optional(),
-  country: yup.string().optional(),
-  taxId: yup.string().optional(),
-  contactPerson: yup.string().optional(),
-  contactPhone: yup.string().optional(),
+  address: yup.string().nullable().optional(),
+  city: yup.string().nullable().optional(),
+  state: yup.string().nullable().optional(),
+  zipCode: yup.string().nullable().optional(),
+  country: yup.string().nullable().optional(),
+  taxId: yup.string().nullable().optional(),
+  contactPerson: yup.string().nullable().optional(),
+  contactPhone: yup.string().nullable().optional(),
   website: yup.string().test('is-url', 'Invalid website URL', function(value) {
-    if (!value || value.trim() === '') return true; // Allow empty values
+    if (!value || value === null || value.trim() === '') return true; // Allow empty values and null
     try {
       new URL(value);
       return true;
     } catch {
       return false;
     }
-  }).optional(),
-  paymentTerms: yup.string().optional(),
+  }).nullable().optional(),
+  paymentTerms: yup.string().nullable().optional(),
   creditLimit: yup.number().nullable().optional(),
   isActive: yup.boolean().optional(),
-  notes: yup.string().optional()
+  notes: yup.string().nullable().optional()
 });
 
 const defaultValues = {
@@ -250,10 +250,33 @@ const SuppliersPage: React.FC = () => {
 
   const onSubmit = async (data: any) => {
     try {
-      // Convert string values to proper types
+      // Helper function to convert empty strings to null
+      const toNullIfEmpty = (value: any): any => {
+        if (typeof value === 'string' && value.trim() === '') {
+          return null;
+        }
+        return value;
+      };
+
+      // Convert string values to proper types and empty strings to null
       const submitData = {
-        ...data,
-        isActive: data.isActive === 'true' || data.isActive === true
+        name: data.name?.trim() || '',
+        company: toNullIfEmpty(data.company),
+        email: toNullIfEmpty(data.email),
+        phone: data.phone?.trim() || '',
+        address: toNullIfEmpty(data.address),
+        city: toNullIfEmpty(data.city),
+        state: toNullIfEmpty(data.state),
+        zipCode: toNullIfEmpty(data.zipCode),
+        country: toNullIfEmpty(data.country),
+        taxId: toNullIfEmpty(data.taxId),
+        contactPerson: toNullIfEmpty(data.contactPerson),
+        contactPhone: toNullIfEmpty(data.contactPhone),
+        website: toNullIfEmpty(data.website),
+        paymentTerms: toNullIfEmpty(data.paymentTerms),
+        creditLimit: data.creditLimit || null,
+        isActive: data.isActive === 'true' || data.isActive === true,
+        notes: toNullIfEmpty(data.notes)
       };
       
       if (editingSupplier) {
@@ -278,7 +301,7 @@ const SuppliersPage: React.FC = () => {
       fetchStats();
     } catch (error: any) {
       console.error('Error saving supplier:', error);
-      const errorMessage = error?.response?.data?.error || 'Failed to save supplier';
+      const errorMessage = error?.response?.data?.error || error?.response?.data?.message || 'Failed to save supplier';
       showSnackbar(errorMessage, 'error');
     }
   };
