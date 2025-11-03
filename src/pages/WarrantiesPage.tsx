@@ -164,7 +164,8 @@ const WarrantiesPage: React.FC = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await apiService.get('/products');
+      // Fetch all products with high limit (including inactive for warranty management)
+      const response = await apiService.get('/products?limit=1000');
       if (response.success && Array.isArray(response.data)) {
         setProducts(response.data.filter((p: any) => p.hasWarranty));
       } else if (Array.isArray(response)) {

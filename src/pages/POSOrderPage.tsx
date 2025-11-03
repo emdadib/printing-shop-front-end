@@ -127,7 +127,8 @@ const POSOrderPage: React.FC = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await apiService.get('/products');
+      // Fetch all active products with high limit to ensure we get all products
+      const response = await apiService.get('/products?limit=1000&isActive=true');
       if (response.success && Array.isArray(response.data)) {
         setProducts(response.data);
       } else if (Array.isArray(response)) {
