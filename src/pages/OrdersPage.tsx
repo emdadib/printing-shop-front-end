@@ -35,6 +35,7 @@ import {
   Tooltip,
   Chip,
   Snackbar,
+  Autocomplete,
 } from '@mui/material';
 import {
   Add,
@@ -292,7 +293,8 @@ const OrdersPage: React.FC = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await apiService.get('/products');
+      // Fetch all active products with high limit to ensure we get all products
+      const response = await apiService.get('/products?limit=1000&isActive=true');
       if (response.success && Array.isArray(response.data)) {
         setProducts(response.data);
       } else if (Array.isArray(response)) {
@@ -1164,19 +1166,51 @@ const OrdersPage: React.FC = () => {
                       name="customerId"
                       control={control}
                       render={({ field }) => (
-                        <FormControl fullWidth error={!!errors.customerId}>
-                          <InputLabel>Customer</InputLabel>
-                          <Select {...field} label="Customer">
-                            <MenuItem value="walk-in">
-                              🚶 Walk-in Customer (One-time)
-                            </MenuItem>
-                            {customers.map((customer) => (
-                              <MenuItem key={customer.id} value={customer.id}>
-                                {customer.firstName} {customer.lastName} ({customer.email})
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
+                        <Autocomplete
+                          options={[
+                            { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
+                            ...customers
+                          ]}
+                          getOptionLabel={(option) => {
+                            if (option.id === 'walk-in') {
+                              return '🚶 Walk-in Customer (One-time)';
+                            }
+                            return `${option.firstName} ${option.lastName}${option.email ? ` (${option.email})` : ''}${option.phone ? ` - ${option.phone}` : ''}`;
+                          }}
+                          filterOptions={(options, { inputValue }) => {
+                            const searchTerm = inputValue.toLowerCase();
+                            return options.filter((option) => {
+                              if (option.id === 'walk-in') {
+                                return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
+                              }
+                              return (
+                                option.firstName.toLowerCase().includes(searchTerm) ||
+                                option.lastName.toLowerCase().includes(searchTerm) ||
+                                option.email.toLowerCase().includes(searchTerm) ||
+                                option.phone.toLowerCase().includes(searchTerm) ||
+                                `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
+                              );
+                            });
+                          }}
+                          value={
+                            field.value === 'walk-in' || !field.value
+                              ? { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' }
+                              : customers.find((c) => c.id === field.value) || null
+                          }
+                          onChange={(_, newValue) => {
+                            field.onChange(newValue ? newValue.id : 'walk-in');
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Customer"
+                              error={!!errors.customerId}
+                              helperText={errors.customerId?.message}
+                              placeholder="Search by name, email, or phone..."
+                            />
+                          )}
+                          noOptionsText="No customers found"
+                        />
                       )}
                     />
                   </Grid>
