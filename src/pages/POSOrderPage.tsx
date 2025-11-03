@@ -23,6 +23,7 @@ import {
   Alert,
   Snackbar,
   Badge,
+  Autocomplete,
 } from '@mui/material';
 import {
   Add,
@@ -499,17 +500,53 @@ const POSOrderPage: React.FC = () => {
               name="customerId"
               control={control}
               render={({ field }) => (
-                <FormControl fullWidth size="small" sx={{ mb: 2 }} error={!!errors.customerId}>
-                  <InputLabel>Customer</InputLabel>
-                  <Select {...field} label="Customer">
-                    <MenuItem value="walk-in">🚶 Walk-in Customer</MenuItem>
-                    {customers.map((customer) => (
-                      <MenuItem key={customer.id} value={customer.id}>
-                        {customer.firstName} {customer.lastName}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  options={[
+                    { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
+                    ...customers
+                  ]}
+                  getOptionLabel={(option) => {
+                    if (option.id === 'walk-in') {
+                      return '🚶 Walk-in Customer';
+                    }
+                    return `${option.firstName} ${option.lastName}${option.email ? ` (${option.email})` : ''}${option.phone ? ` - ${option.phone}` : ''}`;
+                  }}
+                  filterOptions={(options, { inputValue }) => {
+                    const searchTerm = inputValue.toLowerCase();
+                    return options.filter((option) => {
+                      if (option.id === 'walk-in') {
+                        return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
+                      }
+                      return (
+                        option.firstName.toLowerCase().includes(searchTerm) ||
+                        option.lastName.toLowerCase().includes(searchTerm) ||
+                        option.email.toLowerCase().includes(searchTerm) ||
+                        option.phone.toLowerCase().includes(searchTerm) ||
+                        `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
+                      );
+                    });
+                  }}
+                  value={
+                    field.value === 'walk-in'
+                      ? { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' }
+                      : customers.find((c) => c.id === field.value) || null
+                  }
+                  onChange={(_, newValue) => {
+                    field.onChange(newValue ? newValue.id : 'walk-in');
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Customer"
+                      size="small"
+                      error={!!errors.customerId}
+                      helperText={errors.customerId?.message}
+                      placeholder="Search by name, email, or phone..."
+                    />
+                  )}
+                  sx={{ mb: 2 }}
+                  noOptionsText="No customers found"
+                />
               )}
             />
 
