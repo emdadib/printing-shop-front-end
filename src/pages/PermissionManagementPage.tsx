@@ -37,7 +37,6 @@ import {
   Person as PersonIcon,
   Security as SecurityIcon,
   Menu as MenuIcon,
-  Save as SaveIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material'
 import { useQueryClient } from 'react-query'

@@ -108,7 +108,7 @@ const supplierSchema = yup.object({
 
 const openingBalanceSchema = yup.object({
   amount: yup.number().required('Amount is required').positive('Amount must be positive'),
-  date: yup.date().required('Date is required'),
+  date: yup.string().required('Date is required'),
   notes: yup.string()
 });
 
