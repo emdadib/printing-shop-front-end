@@ -112,6 +112,7 @@ const openingBalanceSchema = yup.object({
   notes: yup.string()
 });
 
+// Default values for the supplier form
 const defaultValues = {
   name: '',
   company: '',
