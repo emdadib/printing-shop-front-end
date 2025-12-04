@@ -22,63 +22,71 @@ export const menuItems: MenuItem[] = [
     name: 'orders',
     label: 'Orders',
     path: '/orders',
-    icon: 'ShoppingCart'
+    icon: 'ShoppingCart',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'products',
     label: 'Products',
     path: '/products',
-    icon: 'Inventory'
+    icon: 'Inventory',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'customers',
     label: 'Customers',
     path: '/customers',
-    icon: 'People'
+    icon: 'People',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'inventory',
     label: 'Inventory',
     path: '/inventory',
-    icon: 'Warehouse'
+    icon: 'Warehouse',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'suppliers',
     label: 'Suppliers',
     path: '/suppliers',
-    icon: 'Business'
+    icon: 'Business',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'purchase-orders',
     label: 'Purchase Orders',
     path: '/purchase-orders',
-    icon: 'ShoppingBag'
+    icon: 'ShoppingBag',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'reports',
     label: 'Reports',
     path: '/reports',
     icon: 'Assessment',
-    requiresRole: ['SUPER_ADMIN', 'ADMIN', 'MANAGER']
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'accounting',
     label: 'Accounting',
     path: '/accounting',
     icon: 'AccountBalance',
-    requiresRole: ['SUPER_ADMIN', 'ADMIN', 'MANAGER']
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'expenses',
     label: 'Expenses',
     path: '/expenses',
-    icon: 'Receipt'
+    icon: 'Receipt',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'warranties',
     label: 'Warranties',
     path: '/warranties',
-    icon: 'Security'
+    icon: 'Security',
+    requiresRole: ['SUPER_ADMIN', 'ADMIN']
   },
   {
     name: 'users',
