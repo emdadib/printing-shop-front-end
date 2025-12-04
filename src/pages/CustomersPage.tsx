@@ -25,6 +25,7 @@ import {
   InputAdornment,
   Avatar,
   Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -35,7 +36,8 @@ import {
   Phone,
   LocationOn,
   ShoppingCart,
-  Star
+  Star,
+  AccountBalance
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -65,6 +67,12 @@ const customerSchema = yup.object({
   address: yup.string()
 });
 
+const openingBalanceSchema = yup.object({
+  amount: yup.number().required('Amount is required').positive('Amount must be positive'),
+  date: yup.string().required('Date is required'),
+  notes: yup.string()
+});
+
 const CustomersPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +82,13 @@ const CustomersPage: React.FC = () => {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [openingBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
+  const [selectedCustomerForBalance, setSelectedCustomerForBalance] = useState<Customer | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   const {
     control,
@@ -88,6 +103,20 @@ const CustomersPage: React.FC = () => {
       email: '',
       phone: '',
       address: ''
+    }
+  });
+
+  const {
+    control: balanceControl,
+    handleSubmit: handleBalanceSubmit,
+    reset: resetBalance,
+    formState: { errors: balanceErrors }
+  } = useForm({
+    resolver: yupResolver(openingBalanceSchema),
+    defaultValues: {
+      amount: 0,
+      date: new Date().toISOString().split('T')[0],
+      notes: ''
     }
   });
 
@@ -181,6 +210,52 @@ const CustomersPage: React.FC = () => {
     if (points >= 1000) return { level: 'Gold', color: 'warning' as const };
     if (points >= 500) return { level: 'Silver', color: 'default' as const };
     return { level: 'Bronze', color: 'primary' as const };
+  };
+
+  const handleOpenBalanceDialog = (customer: Customer) => {
+    setSelectedCustomerForBalance(customer);
+    resetBalance({
+      amount: 0,
+      date: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+    setOpeningBalanceDialogOpen(true);
+  };
+
+  const handleCloseBalanceDialog = () => {
+    setOpeningBalanceDialogOpen(false);
+    setSelectedCustomerForBalance(null);
+    resetBalance();
+  };
+
+  const onSubmitOpeningBalance = async (data: any) => {
+    if (!selectedCustomerForBalance) return;
+
+    try {
+      // Store always owes customer (payable) - always CREDIT
+      await apiService.post('/accounting/customers/transactions', {
+        customerId: selectedCustomerForBalance.id,
+        type: 'CREDIT',
+        amount: data.amount,
+        description: 'Opening Balance - Store owes customer',
+        reference: 'OPENING_BALANCE',
+        referenceType: 'ADJUSTMENT',
+        date: data.date,
+        notes: data.notes || undefined
+      });
+
+      showSnackbar('Opening balance added successfully', 'success');
+      handleCloseBalanceDialog();
+      fetchCustomers();
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to add opening balance';
+      showSnackbar(errorMessage, 'error');
+      console.error('Opening balance error:', err);
+    }
+  };
+
+  const showSnackbar = (message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
   };
 
   const filteredCustomers = customers.filter(customer => 
@@ -327,6 +402,15 @@ const CustomersPage: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
+                      <Tooltip title="Add Opening Balance">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleOpenBalanceDialog(customer)}
+                          color="primary"
+                        >
+                          <AccountBalance />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Edit Customer">
                         <IconButton size="small" onClick={() => handleOpenDialog(customer)}>
                           <Edit />
@@ -465,6 +549,98 @@ const CustomersPage: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Opening Balance Dialog */}
+        <Dialog open={openingBalanceDialogOpen} onClose={handleCloseBalanceDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            Add Opening Balance - {selectedCustomerForBalance?.firstName} {selectedCustomerForBalance?.lastName}
+          </DialogTitle>
+          <form onSubmit={handleBalanceSubmit(onSubmitOpeningBalance)}>
+            <DialogContent>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  <strong>Opening Balance:</strong> Amount the store owes to the customer (Payable)
+                </Typography>
+              </Alert>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Controller
+                    name="amount"
+                    control={balanceControl}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Amount *"
+                        type="number"
+                        inputProps={{ step: '0.01', min: '0' }}
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">$</InputAdornment>
+                        }}
+                        error={!!balanceErrors.amount}
+                        helperText={balanceErrors.amount?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Controller
+                    name="date"
+                    control={balanceControl}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Date *"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        error={!!balanceErrors.date}
+                        helperText={balanceErrors.date?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Controller
+                    name="notes"
+                    control={balanceControl}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Notes"
+                        multiline
+                        rows={3}
+                        error={!!balanceErrors.notes}
+                        helperText={balanceErrors.notes?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseBalanceDialog}>Cancel</Button>
+              <Button type="submit" variant="contained">
+                Add Opening Balance
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
+
+        {/* Snackbar */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+        >
+          <Alert
+            onClose={() => setSnackbar({ ...snackbar, open: false })}
+            severity={snackbar.severity}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
       </Box>
     </>
   );

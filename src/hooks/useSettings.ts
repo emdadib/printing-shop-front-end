@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from 'react-query';
 import { apiService } from '@/services/api';
 
 interface Setting {
@@ -11,33 +11,33 @@ interface Setting {
   updatedAt: string;
 }
 
+// Cache key for React Query
+const SETTINGS_KEY = 'settings';
+
+// Fetch function
+const fetchSettings = async (): Promise<Setting[]> => {
+  const response = await apiService.get('/settings');
+  if (response.success && Array.isArray(response.data)) {
+    return response.data;
+  } else if (Array.isArray(response)) {
+    return response;
+  } else {
+    return [];
+  }
+};
+
 export const useSettings = () => {
-  const [settings, setSettings] = useState<Setting[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.get('/settings');
-      if (response.success && Array.isArray(response.data)) {
-        setSettings(response.data);
-      } else if (Array.isArray(response)) {
-        setSettings(response);
-      } else {
-        setSettings([]);
-      }
-    } catch (err) {
-      setError('Failed to load settings');
-      console.error('Settings fetch error:', err);
-    } finally {
-      setLoading(false);
+  const { data: settings = [], isLoading: loading, error, refetch } = useQuery<Setting[]>(
+    SETTINGS_KEY,
+    fetchSettings,
+    {
+      staleTime: 10 * 60 * 1000, // Cache for 10 minutes (settings don't change often)
+      cacheTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+      refetchOnWindowFocus: false, // Don't refetch on window focus
+      refetchOnMount: false, // Don't refetch on component mount if data exists
+      retry: 1, // Only retry once on failure
     }
-  };
+  );
 
   const getSettingValue = (key: string, defaultValue: string = '') => {
     const setting = settings.find(s => s.key === key);
@@ -55,9 +55,9 @@ export const useSettings = () => {
   return {
     settings,
     loading,
-    error,
+    error: error ? 'Failed to load settings' : null,
     getSettingValue,
     formatCurrency,
-    refetch: fetchSettings
+    refetch: () => refetch()
   };
 };

@@ -29,7 +29,8 @@ import {
   Alert,
   Divider,
   Tooltip,
-  Snackbar
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -161,7 +162,8 @@ const PurchaseOrdersPage: React.FC = () => {
   const [paymentOrder, setPaymentOrder] = useState<PurchaseOrder | null>(null);
   const [showProductSelection, setShowProductSelection] = useState(false);
   const [productTypeFilter, setProductTypeFilter] = useState<string>('ALL');
-  const [purchaseMode, setPurchaseMode] = useState<'FULL' | 'QUICK'>('FULL');
+  const [purchaseMode, setPurchaseMode] = useState<'FULL' | 'QUICK'>('QUICK');
+  const [submitting, setSubmitting] = useState(false);
 
   // Form for creating purchase orders
   const {
@@ -427,11 +429,18 @@ const PurchaseOrdersPage: React.FC = () => {
   };
 
   const handleCreateOrder = async (data: any) => {
+    // Prevent double submission
+    if (submitting) {
+      return;
+    }
+
     try {
       if (selectedProducts.length === 0) {
         showSnackbar('Please add at least one product to the purchase order', 'warning');
         return;
       }
+
+      setSubmitting(true);
 
       // Generate PO number
       const poNumber = `PO-${Date.now()}`;
@@ -469,6 +478,8 @@ const PurchaseOrdersPage: React.FC = () => {
     } catch (error) {
       console.error('Error creating purchase order:', error);
       showSnackbar('Failed to create purchase order', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1176,9 +1187,16 @@ const PurchaseOrdersPage: React.FC = () => {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseDialog}>Cancel</Button>
-            <Button type="submit" variant="contained">
-              {editingOrder ? 'Update' : 'Create'} Purchase Order
+            <Button onClick={handleCloseDialog} disabled={submitting}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={submitting}>
+              {submitting ? (
+                <>
+                  <CircularProgress size={20} sx={{ mr: 1 }} />
+                  {editingOrder ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                editingOrder ? 'Update' : 'Create'
+              )} Purchase Order
             </Button>
           </DialogActions>
         </form>

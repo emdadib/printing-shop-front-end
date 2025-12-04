@@ -1,5 +1,6 @@
 import React from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useAccessibleMenus } from '@/hooks/useAccessibleMenus'
 
 interface PermissionGateProps {
   children: React.ReactNode
@@ -25,9 +26,11 @@ export const PermissionGate: React.FC<PermissionGateProps> = ({
     canCreate, 
     canRead, 
     canUpdate, 
-    canDelete, 
-    canViewMenu 
+    canDelete
   } = usePermissions()
+  
+  // Use dynamic menu permissions from backend
+  const { canViewMenu: canViewMenuDynamic } = useAccessibleMenus()
 
   // Check role-based access
   if (roles) {
@@ -37,9 +40,9 @@ export const PermissionGate: React.FC<PermissionGateProps> = ({
     }
   }
 
-  // Check menu access
+  // Check menu access (using dynamic permissions from backend)
   if (menu) {
-    const canView = canViewMenu(menu)
+    const canView = canViewMenuDynamic(menu)
     if (!canView) {
       return <>{fallback}</>
     }
@@ -76,7 +79,7 @@ export const PermissionGate: React.FC<PermissionGateProps> = ({
     const conditions = []
     
     if (roles) conditions.push(hasRole(roles))
-    if (menu) conditions.push(canViewMenu(menu))
+    if (menu) conditions.push(canViewMenuDynamic(menu))
     if (resource && action) {
       switch (action) {
         case 'create':

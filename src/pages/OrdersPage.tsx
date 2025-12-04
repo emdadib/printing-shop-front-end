@@ -36,6 +36,7 @@ import {
   Chip,
   Snackbar,
   Autocomplete,
+  TablePagination,
 } from '@mui/material';
 import {
   Add,
@@ -141,6 +142,12 @@ const OrdersPage: React.FC = () => {
   }>({ open: false, message: '', severity: 'success' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -151,6 +158,10 @@ const OrdersPage: React.FC = () => {
   const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedOrderForMenu, setSelectedOrderForMenu] = useState<Order | null>(null);
+  
+  // Status menu state
+  const [statusMenuAnchorEl, setStatusMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedOrderForStatus, setSelectedOrderForStatus] = useState<Order | null>(null);
   
   // Payment state
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
@@ -192,10 +203,13 @@ const OrdersPage: React.FC = () => {
 
 
   useEffect(() => {
-    fetchOrders();
     fetchProducts();
     fetchCustomers();
   }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [page, rowsPerPage, statusFilter, startDate, endDate]);
 
   useEffect(() => {
     if (orders.length > 0) {
@@ -275,13 +289,39 @@ const OrdersPage: React.FC = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await apiService.get('/orders');
+      const params = new URLSearchParams();
+      
+      // Add pagination parameters
+      params.append('page', (page + 1).toString()); // Backend uses 1-based pagination
+      params.append('limit', rowsPerPage.toString());
+      
+      // Add status filter if not 'all'
+      if (statusFilter && statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      
+      // Add date range filters if provided
+      if (startDate) {
+        params.append('startDate', startDate);
+      }
+      if (endDate) {
+        params.append('endDate', endDate);
+      }
+      
+      const response = await apiService.get(`/orders?${params.toString()}`);
+      
       if (response.success && Array.isArray(response.data)) {
         setOrders(response.data);
+        // Update total count from pagination info
+        if (response.pagination) {
+          setTotalOrders(response.pagination.total);
+        }
       } else if (Array.isArray(response)) {
         setOrders(response);
+        setTotalOrders(response.length);
       } else {
         setOrders([]);
+        setTotalOrders(0);
       }
     } catch (err) {
       setError('Failed to load orders');
@@ -514,12 +554,18 @@ const OrdersPage: React.FC = () => {
   };
 
   const onSubmit = async (data: any) => {
+    // Prevent double submission
+    if (submitting) {
+      return;
+    }
+
     if (orderItems.length === 0) {
       setError('Please add at least one item to the order');
       return;
     }
 
     try {
+      setSubmitting(true);
       const orderData = {
         ...data,
         items: orderItems.map(item => ({
@@ -655,6 +701,8 @@ const OrdersPage: React.FC = () => {
           fetchDueAmounts();
         }, 1000);
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -679,13 +727,45 @@ const OrdersPage: React.FC = () => {
       if (response && response.success) {
         fetchOrders();
         setError(null);
+        showSnackbar(`Order status updated to ${newStatus.replace('_', ' ')}`, 'success');
+        // Close status menu if open
+        setStatusMenuAnchorEl(null);
+        setSelectedOrderForStatus(null);
       } else {
         setError('Failed to update order status');
+        showSnackbar('Failed to update order status', 'error');
       }
     } catch (error) {
       console.error('Error updating order status:', error);
       setError('Failed to update order status');
+      showSnackbar('Failed to update order status', 'error');
     }
+  };
+
+  const handleStatusMenuOpen = (event: React.MouseEvent<HTMLElement>, order: Order) => {
+    event.stopPropagation();
+    setStatusMenuAnchorEl(event.currentTarget);
+    setSelectedOrderForStatus(order);
+  };
+
+  const handleStatusMenuClose = () => {
+    setStatusMenuAnchorEl(null);
+    setSelectedOrderForStatus(null);
+  };
+
+  const handleStatusSelect = (status: string) => {
+    if (selectedOrderForStatus) {
+      handleUpdateOrderStatus(selectedOrderForStatus.id, status);
+    }
+    handleStatusMenuClose();
+  };
+
+  const getStatusLabel = (status: string) => {
+    return status.replace('_', ' ');
+  };
+
+  const getAllStatuses = () => {
+    return ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'READY', 'COMPLETED', 'CANCELLED'];
   };
 
   const getNextStatus = (currentStatus: string) => {
@@ -775,22 +855,18 @@ const OrdersPage: React.FC = () => {
     }
   };
 
+  // Client-side search filtering (server handles pagination, status, and date range)
   const filteredOrders = (orders || []).filter(order => {
-    const matchesSearch = order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${order.customer?.firstName || 'Unknown'} ${order.customer?.lastName || 'Customer'}`.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!searchTerm) return true;
     
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      order.orderNumber.toLowerCase().includes(searchLower) ||
+      `${order.customer?.firstName || 'Unknown'} ${order.customer?.lastName || 'Customer'}`.toLowerCase().includes(searchLower) ||
+      (order.customer?.email || '').toLowerCase().includes(searchLower);
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch;
   });
-
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   return (
     <Box p={3}>
@@ -823,54 +899,123 @@ const OrdersPage: React.FC = () => {
       )}
 
       {/* Search and Filters */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
-        <TextField
-          size="small"
-          placeholder="Search orders..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          sx={{ width: 300 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-          }}
-        />
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Status</InputLabel>
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            label="Status"
-          >
-            <MenuItem value="all">All Status</MenuItem>
-            <MenuItem value="PENDING">Pending</MenuItem>
-            <MenuItem value="CONFIRMED">Confirmed</MenuItem>
-            <MenuItem value="COMPLETED">Completed</MenuItem>
-            <MenuItem value="CANCELLED">Cancelled</MenuItem>
-          </Select>
-        </FormControl>
-      </Box>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="Search orders..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(0); // Reset to first page when filter changes
+                  }}
+                  label="Status"
+                >
+                  <MenuItem value="all">All Status</MenuItem>
+                  <MenuItem value="PENDING">Pending</MenuItem>
+                  <MenuItem value="CONFIRMED">Confirmed</MenuItem>
+                  <MenuItem value="COMPLETED">Completed</MenuItem>
+                  <MenuItem value="CANCELLED">Cancelled</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2.5}>
+              <TextField
+                size="small"
+                fullWidth
+                label="Start Date"
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setPage(0); // Reset to first page when filter changes
+                }}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2.5}>
+              <TextField
+                size="small"
+                fullWidth
+                label="End Date"
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setPage(0); // Reset to first page when filter changes
+                }}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => {
+                  setStartDate('');
+                  setEndDate('');
+                  setStatusFilter('all');
+                  setSearchTerm('');
+                  setPage(0);
+                }}
+              >
+                Clear Filters
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* Orders Table */}
       <TableContainer component={Paper}>
         <Table>
-                     <TableHead>
-                           <TableRow>
-                <TableCell>Order #</TableCell>
-                <TableCell>Customer</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Total</TableCell>
-                <TableCell>Due Amount</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-           </TableHead>
+          <TableHead>
+            <TableRow>
+              <TableCell>Order #</TableCell>
+              <TableCell>Customer</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Total</TableCell>
+              <TableCell>Due Amount</TableCell>
+              <TableCell>Created</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
           <TableBody>
-            {filteredOrders.map((order) => (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={8} align="center">
+                  <CircularProgress />
+                </TableCell>
+              </TableRow>
+            ) : filteredOrders.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} align="center">
+                  <Typography variant="body2" color="text.secondary">
+                    No orders found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredOrders.map((order) => (
               <TableRow key={order.id}>
                 <TableCell>
                   <Typography variant="subtitle2">{order.orderNumber}</Typography>
@@ -886,14 +1031,19 @@ const OrdersPage: React.FC = () => {
                  <TableCell>{order.type}</TableCell>
                 <TableCell>
                   <Chip 
-                    label={order.status} 
+                    label={getStatusLabel(order.status)} 
                     color={
                       order.status === 'COMPLETED' ? 'success' :
                       order.status === 'PENDING' ? 'warning' :
                       order.status === 'CANCELLED' ? 'error' :
+                      order.status === 'IN_PROGRESS' ? 'info' :
+                      order.status === 'READY' ? 'primary' :
                       'default'
                     }
                     size="small"
+                    onClick={(e) => handleStatusMenuOpen(e, order)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to change status"
                   />
                 </TableCell>
                 <TableCell>{formatCurrency(Number(order.total) || 0)}</TableCell>
@@ -918,7 +1068,7 @@ const OrdersPage: React.FC = () => {
                       <Visibility />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Update Status">
+                  <Tooltip title="Quick Status: Next Step">
                     <IconButton 
                       size="small" 
                       onClick={() => {
@@ -928,6 +1078,7 @@ const OrdersPage: React.FC = () => {
                         }
                       }}
                       disabled={!getNextStatus(order.status)}
+                      color="primary"
                     >
                       <CheckCircle />
                     </IconButton>
@@ -953,9 +1104,22 @@ const OrdersPage: React.FC = () => {
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+              ))
+            )}
           </TableBody>
         </Table>
+        <TablePagination
+          component="div"
+          count={totalOrders}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[5, 10, 25, 50]}
+        />
       </TableContainer>
 
       {/* Order Summary */}
@@ -1026,6 +1190,48 @@ const OrdersPage: React.FC = () => {
         </MenuItem>
       </Menu>
 
+      {/* Status Change Menu */}
+      <Menu
+        anchorEl={statusMenuAnchorEl}
+        open={Boolean(statusMenuAnchorEl)}
+        onClose={handleStatusMenuClose}
+      >
+        <MenuItem disabled>
+          <Typography variant="subtitle2" fontWeight="bold">
+            Change Status
+          </Typography>
+        </MenuItem>
+        <MenuItem disabled>
+          <Typography variant="caption" color="text.secondary">
+            Current: {selectedOrderForStatus?.status ? getStatusLabel(selectedOrderForStatus.status) : ''}
+          </Typography>
+        </MenuItem>
+        <Divider />
+        {getAllStatuses().map((status) => (
+          <MenuItem
+            key={status}
+            onClick={() => handleStatusSelect(status)}
+            selected={selectedOrderForStatus?.status === status}
+            disabled={selectedOrderForStatus?.status === status}
+          >
+            <Chip
+              label={getStatusLabel(status)}
+              size="small"
+              color={
+                status === 'COMPLETED' ? 'success' :
+                status === 'PENDING' ? 'warning' :
+                status === 'CANCELLED' ? 'error' :
+                status === 'IN_PROGRESS' ? 'info' :
+                status === 'READY' ? 'primary' :
+                'default'
+              }
+              sx={{ mr: 1 }}
+            />
+            {getStatusLabel(status)}
+          </MenuItem>
+        ))}
+      </Menu>
+
       {/* Order Details Dialog */}
       <Dialog open={openDetailsDialog} onClose={handleCloseDetailsDialog} maxWidth="md" fullWidth>
         <DialogTitle>
@@ -1065,18 +1271,45 @@ const OrdersPage: React.FC = () => {
                 {/* Status Update Section */}
                 <Box mt={2}>
                   <Typography variant="h6" gutterBottom>Update Status</Typography>
-                  <Box display="flex" gap={1} flexWrap="wrap">
-                    {['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'READY', 'COMPLETED', 'CANCELLED'].map((status) => (
+                  <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
+                    {getAllStatuses().map((status) => (
                       <Chip
                         key={status}
-                        label={status.replace('_', ' ')}
-                        color={status === selectedOrder.status ? 'primary' : 'default'}
+                        label={getStatusLabel(status)}
+                        color={
+                          status === selectedOrder.status ? 'primary' :
+                          status === 'COMPLETED' ? 'success' :
+                          status === 'PENDING' ? 'warning' :
+                          status === 'CANCELLED' ? 'error' :
+                          status === 'IN_PROGRESS' ? 'info' :
+                          status === 'READY' ? 'primary' :
+                          'default'
+                        }
                         variant={status === selectedOrder.status ? 'filled' : 'outlined'}
                         onClick={() => handleUpdateOrderStatus(selectedOrder.id, status)}
                         style={{ cursor: 'pointer' }}
+                        size="medium"
                       />
                     ))}
                   </Box>
+                  {getNextStatus(selectedOrder.status) && (
+                    <Box mt={1}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        startIcon={<CheckCircle />}
+                        onClick={() => {
+                          const nextStatus = getNextStatus(selectedOrder.status);
+                          if (nextStatus) {
+                            handleUpdateOrderStatus(selectedOrder.id, nextStatus);
+                          }
+                        }}
+                      >
+                        Quick: Move to {getStatusLabel(getNextStatus(selectedOrder.status) || '')}
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               </Grid>
               {selectedOrder.notes && (
@@ -1492,9 +1725,16 @@ const OrdersPage: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseDialog}>Cancel</Button>
-            <Button type="submit" variant="contained" disabled={orderItems.length === 0}>
-              Create Order
+            <Button onClick={handleCloseDialog} disabled={submitting}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={orderItems.length === 0 || submitting}>
+              {submitting ? (
+                <>
+                  <CircularProgress size={20} sx={{ mr: 1 }} />
+                  Creating...
+                </>
+              ) : (
+                'Create Order'
+              )}
             </Button>
           </DialogActions>
         </form>
