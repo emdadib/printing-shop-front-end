@@ -250,17 +250,33 @@ const ProductsPage: React.FC = () => {
   const fetchCategories = async () => {
     try {
       const response = await dataService.getCategories();
+      let categoriesList: Category[] = [];
+      
+      // Handle different response formats
       if (response.success && Array.isArray(response.data)) {
-        setCategories(response.data);
+        categoriesList = response.data;
       } else if (Array.isArray(response)) {
-        setCategories(response);
+        categoriesList = response;
+      } else if (response.data && Array.isArray(response.data)) {
+        categoriesList = response.data;
       } else {
-        console.error('Invalid response format:', response);
-        setError('Invalid response format from server');
+        // If response format is unexpected but no error, just log and use empty array
+        console.warn('Unexpected categories response format:', response);
+        categoriesList = [];
+      }
+      
+      setCategories(categoriesList);
+      
+      // Only log if we expected categories but got none (not an error, just a warning)
+      if (categoriesList.length === 0) {
+        console.log('No categories found');
       }
     } catch (err) {
+      // Only set error if there's an actual exception
       console.error('Categories fetch error:', err);
-      setError('Failed to load categories');
+      // Don't set error state - categories are optional and shouldn't block the page
+      // Just use empty array
+      setCategories([]);
     }
   };
 

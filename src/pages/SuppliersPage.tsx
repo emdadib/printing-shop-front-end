@@ -37,7 +37,8 @@ import {
   Business as BusinessIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
-  Language as WebsiteIcon
+  Language as WebsiteIcon,
+  AccountBalance as AccountBalanceIcon
 } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
 import { useForm, Controller } from 'react-hook-form';
@@ -105,6 +106,12 @@ const supplierSchema = yup.object({
   notes: yup.string().nullable().optional()
 });
 
+const openingBalanceSchema = yup.object({
+  amount: yup.number().required('Amount is required').positive('Amount must be positive'),
+  date: yup.date().required('Date is required'),
+  notes: yup.string()
+});
+
 const defaultValues = {
   name: '',
   company: '',
@@ -142,6 +149,8 @@ const SuppliersPage: React.FC = () => {
     open: boolean;
     supplier: Supplier | null;
   }>({ open: false, supplier: null });
+  const [openingBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
+  const [selectedSupplierForBalance, setSelectedSupplierForBalance] = useState<Supplier | null>(null);
 
   const {
     control,
@@ -151,6 +160,20 @@ const SuppliersPage: React.FC = () => {
   } = useForm({
     resolver: yupResolver(supplierSchema),
     defaultValues
+  });
+
+  const {
+    control: balanceControl,
+    handleSubmit: handleBalanceSubmit,
+    reset: resetBalance,
+    formState: { errors: balanceErrors }
+  } = useForm({
+    resolver: yupResolver(openingBalanceSchema),
+    defaultValues: {
+      amount: 0,
+      date: new Date().toISOString().split('T')[0],
+      notes: ''
+    }
   });
 
   const navigate = useNavigate();
@@ -387,6 +410,48 @@ const SuppliersPage: React.FC = () => {
     setSnackbar({ open: true, message, severity });
   };
 
+  const handleOpenBalanceDialog = (supplier: Supplier) => {
+    setSelectedSupplierForBalance(supplier);
+    resetBalance({
+      amount: 0,
+      date: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+    setOpeningBalanceDialogOpen(true);
+  };
+
+  const handleCloseBalanceDialog = () => {
+    setOpeningBalanceDialogOpen(false);
+    setSelectedSupplierForBalance(null);
+    resetBalance();
+  };
+
+  const onSubmitOpeningBalance = async (data: any) => {
+    if (!selectedSupplierForBalance) return;
+
+    try {
+      // Supplier always owes store (receivable) - always DEBIT
+      await apiService.post('/accounting/suppliers/transactions', {
+        supplierId: selectedSupplierForBalance.id,
+        type: 'DEBIT',
+        amount: data.amount,
+        description: 'Opening Balance - Supplier owes store',
+        reference: 'OPENING_BALANCE',
+        referenceType: 'ADJUSTMENT',
+        date: data.date,
+        notes: data.notes || undefined
+      });
+
+      showSnackbar('Opening balance added successfully', 'success');
+      handleCloseBalanceDialog();
+      fetchSuppliers(filterStatus === 'all');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to add opening balance';
+      showSnackbar(errorMessage, 'error');
+      console.error('Opening balance error:', err);
+    }
+  };
+
   const filteredSuppliers = (suppliers || []).filter(supplier => {
     const matchesSearch = (supplier.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (supplier.company || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -573,6 +638,15 @@ const SuppliersPage: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell>
+                  <Tooltip title="Add Opening Balance">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleOpenBalanceDialog(supplier)}
+                      color="primary"
+                    >
+                      <AccountBalanceIcon />
+                    </IconButton>
+                  </Tooltip>
                   <IconButton
                     size="small"
                     onClick={() => handleOpenDialog(supplier)}
@@ -949,6 +1023,84 @@ const SuppliersPage: React.FC = () => {
             Delete Permanently
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Opening Balance Dialog */}
+      <Dialog open={openingBalanceDialogOpen} onClose={handleCloseBalanceDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Add Opening Balance - {selectedSupplierForBalance?.name}
+        </DialogTitle>
+          <form onSubmit={handleBalanceSubmit(onSubmitOpeningBalance)}>
+          <DialogContent>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                <strong>Opening Balance:</strong> Amount the supplier owes to the store (Receivable)
+              </Typography>
+            </Alert>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Controller
+                  name="amount"
+                  control={balanceControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Amount *"
+                      type="number"
+                      inputProps={{ step: '0.01', min: '0' }}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>
+                      }}
+                      error={!!balanceErrors.amount}
+                      helperText={balanceErrors.amount?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Controller
+                  name="date"
+                  control={balanceControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Date *"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      error={!!balanceErrors.date}
+                      helperText={balanceErrors.date?.message}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Controller
+                  name="notes"
+                  control={balanceControl}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Notes"
+                      multiline
+                      rows={3}
+                      error={!!balanceErrors.notes}
+                      helperText={balanceErrors.notes?.message}
+                    />
+                  )}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseBalanceDialog}>Cancel</Button>
+            <Button type="submit" variant="contained">
+              Add Opening Balance
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       {/* Snackbar */}

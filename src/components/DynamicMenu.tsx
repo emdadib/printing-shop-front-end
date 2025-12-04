@@ -1,4 +1,5 @@
 import React from 'react'
+import { useAccessibleMenus } from '@/hooks/useAccessibleMenus'
 import { usePermissions } from '@/hooks/usePermissions'
 
 interface MenuItem {
@@ -71,8 +72,7 @@ export const menuItems: MenuItem[] = [
     name: 'expenses',
     label: 'Expenses',
     path: '/expenses',
-    icon: 'Receipt',
-    requiresRole: ['SUPER_ADMIN', 'ADMIN', 'MANAGER']
+    icon: 'Receipt'
   },
   {
     name: 'warranties',
@@ -119,14 +119,20 @@ export const DynamicMenu: React.FC<DynamicMenuProps> = ({
   renderMenuItem, 
   className 
 }) => {
-  const { canViewMenu, isSuperAdmin } = usePermissions()
+  const { isSuperAdmin } = usePermissions()
+  const { canViewMenu, loading } = useAccessibleMenus()
 
   const getVisibleMenuItems = (): MenuItem[] => {
+    // Show loading state or empty array while fetching
+    if (loading) {
+      return []
+    }
+
     return menuItems.filter(item => {
       // SuperAdmin can see all menus
       if (isSuperAdmin()) return true
       
-      // Check if user can view this menu
+      // Check if user can view this menu (from dynamic backend permissions)
       return canViewMenu(item.name)
     })
   }
@@ -142,7 +148,12 @@ export const DynamicMenu: React.FC<DynamicMenuProps> = ({
 
 // Hook to get visible menu items
 export const useVisibleMenuItems = (): MenuItem[] => {
-  const { canViewMenu, isSuperAdmin } = usePermissions()
+  const { isSuperAdmin } = usePermissions()
+  const { canViewMenu, loading } = useAccessibleMenus()
+
+  if (loading) {
+    return []
+  }
 
   return menuItems.filter(item => {
     if (isSuperAdmin()) return true

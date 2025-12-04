@@ -107,7 +107,7 @@ const POSOrderPage: React.FC = () => {
     resolver: yupResolver(orderSchema),
     defaultValues: {
       customerId: 'walk-in',
-      type: 'SALE',
+      type: 'DIRECT_SALE',
       notes: '',
     },
   });
@@ -221,6 +221,19 @@ const POSOrderPage: React.FC = () => {
     );
   };
 
+  const updateCartPrice = (productId: string, price: number) => {
+    if (price < 0) {
+      return;
+    }
+    setCart(
+      cart.map((item) =>
+        item.productId === productId
+          ? { ...item, unitPrice: price, total: item.quantity * price }
+          : item
+      )
+    );
+  };
+
   const removeFromCart = (productId: string) => {
     setCart(cart.filter((item) => item.productId !== productId));
   };
@@ -256,6 +269,11 @@ const POSOrderPage: React.FC = () => {
   };
 
   const onSubmit = async (data: any) => {
+    // Prevent double submission
+    if (loading) {
+      return;
+    }
+
     if (cart.length === 0) {
       showSnackbar('Please add at least one item to the cart', 'warning');
       return;
@@ -315,7 +333,7 @@ const POSOrderPage: React.FC = () => {
       setDiscountType('AMOUNT');
       reset({
         customerId: 'walk-in',
-        type: 'SALE',
+        type: 'DIRECT_SALE',
         notes: '',
       });
     } catch (err: any) {
@@ -593,51 +611,91 @@ const POSOrderPage: React.FC = () => {
                       borderRadius: 1,
                       border: 1,
                       borderColor: 'divider',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      py: 1.5,
                     }}
                   >
-                    <ListItemText
-                      primary={
-                        <Typography variant="subtitle2" noWrap>
-                          {item.product.name}
-                        </Typography>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            {formatCurrency(item.unitPrice)} × {item.quantity}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <Box display="flex" alignItems="center" gap={1}>
+                    {/* Product Name and Delete Button */}
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                        {item.product.name}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => removeFromCart(item.productId)}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Box>
+
+                    {/* Quantity, Price, and Total Row */}
+                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                      {/* Quantity Controls */}
+                      <Box display="flex" alignItems="center" gap={0.5}>
                         <IconButton
                           size="small"
                           onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
+                          sx={{ p: 0.5 }}
                         >
                           <Remove fontSize="small" />
                         </IconButton>
-                        <Typography variant="body2" sx={{ minWidth: 24, textAlign: 'center' }}>
-                          {item.quantity}
-                        </Typography>
+                        <TextField
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const qty = parseInt(e.target.value) || 0;
+                            updateCartQuantity(item.productId, qty);
+                          }}
+                          inputProps={{ 
+                            min: 1,
+                            style: { textAlign: 'center', padding: '4px 8px', width: '50px' }
+                          }}
+                          size="small"
+                          sx={{ width: 70 }}
+                          variant="outlined"
+                        />
                         <IconButton
                           size="small"
                           onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
+                          sx={{ p: 0.5 }}
                         >
                           <Add fontSize="small" />
                         </IconButton>
-                        <Typography variant="body2" fontWeight="bold" sx={{ minWidth: 80, textAlign: 'right' }}>
-                          {formatCurrency(item.total)}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => removeFromCart(item.productId)}
-                        >
-                          <Delete fontSize="small" />
-                        </IconButton>
                       </Box>
-                    </ListItemSecondaryAction>
+
+                      {/* Price Input */}
+                      <TextField
+                        type="number"
+                        value={item.unitPrice}
+                        onChange={(e) => {
+                          const price = parseFloat(e.target.value) || 0;
+                          updateCartPrice(item.productId, price);
+                        }}
+                        inputProps={{ 
+                          min: 0,
+                          step: 0.01,
+                          style: { textAlign: 'right', padding: '4px 8px' }
+                        }}
+                        size="small"
+                        sx={{ width: 110 }}
+                        variant="outlined"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start" sx={{ fontSize: '0.75rem', mr: 0.5 }}>
+                              {getSettingValue('CURRENCY', 'USD')}
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+
+                      {/* Total */}
+                      <Typography variant="body2" fontWeight="bold" sx={{ ml: 'auto', minWidth: 90, textAlign: 'right' }}>
+                        {formatCurrency(item.total)}
+                      </Typography>
+                    </Box>
                   </ListItem>
                 ))}
               </List>
