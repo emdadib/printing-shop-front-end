@@ -133,6 +133,7 @@ const defaultValues = {
   notes: ''
 };
 
+// SuppliersPage component
 const SuppliersPage: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [stats, setStats] = useState<SupplierStats | null>(null);
