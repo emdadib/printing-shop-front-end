@@ -47,7 +47,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { apiService } from '../services/api';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from '../hooks/useAuth';
 
@@ -137,6 +137,7 @@ interface SelectedProduct {
 
 const PurchaseOrdersPage: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const selectedSupplierId = location.state?.selectedSupplierId;
   const { getSettingValue, formatCurrency } = useSettings();
   const { user } = useAuth();
@@ -308,6 +309,7 @@ const PurchaseOrdersPage: React.FC = () => {
   // Handlers
   const handleOpenDialog = (order?: PurchaseOrder) => {
     if (order) {
+      // For editing, still use the dialog
       setEditingOrder(order);
       reset({
         supplierId: order.supplierId,
@@ -336,16 +338,13 @@ const PurchaseOrdersPage: React.FC = () => {
         };
       });
       setSelectedProducts(existingItems);
+      setOpenDialog(true);
     } else {
-      setEditingOrder(null);
-      reset({
-        supplierId: selectedSupplierId || '',
-        expectedDelivery: undefined,
-        notes: ''
+      // For new orders, navigate to POS mode
+      navigate('/purchase-orders/new', { 
+        state: { selectedSupplierId: selectedSupplierId || '' } 
       });
-      setSelectedProducts([]);
     }
-    setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {

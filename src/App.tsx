@@ -17,6 +17,7 @@ import POSOrderPage from '@/pages/POSOrderPage'
 import CustomersPage from '@/pages/CustomersPage'
 import SuppliersPage from '@/pages/SuppliersPage'
 import PurchaseOrdersPage from '@/pages/PurchaseOrdersPage'
+import PurchaseOrderPOSPage from '@/pages/PurchaseOrderPOSPage'
 import AccountingPage from '@/pages/AccountingPage'
 import ExpensePage from '@/pages/ExpensePage'
 // import UsersPage from '@/pages/UsersPage' // Unused import
@@ -97,8 +98,9 @@ const App: React.FC = () => {
     <CompanyProvider>
       <CurrencyProvider>
         <Routes>
-          {/* POS page without Layout for full-screen experience */}
+          {/* POS pages without Layout for full-screen experience */}
           <Route path="/pos" element={<POSOrderPage />} />
+          <Route path="/purchase-orders/new" element={<PurchaseOrderPOSPage />} />
           {/* Other pages with Layout */}
           <Route path="*" element={
             <Layout>
