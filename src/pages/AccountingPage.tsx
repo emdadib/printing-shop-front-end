@@ -50,6 +50,7 @@ interface Transaction {
   description: string;
   reference?: string;
   referenceType?: string;
+  accountType?: string; // For company transactions
   date: string;
   createdAt: string;
 }
@@ -59,6 +60,8 @@ interface Transaction {
 interface LedgerData {
   transactions: Transaction[];
   balance: number;
+  balancesByAccountType?: Record<string, number>;
+  accountType?: string;
   pagination: {
     page: number;
     limit: number;
@@ -917,18 +920,96 @@ const AccountingPage: React.FC = () => {
 
       {companyLedger && (
         <Box>
-          <Card sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Company Balance
-              </Typography>
-              <Chip
-                label={formatCurrency(typeof companyLedger.balance === 'number' ? companyLedger.balance : parseFloat(companyLedger.balance) || 0)}
-                color={getBalanceColor(companyLedger.balance) as any}
-                size="medium"
-              />
-            </CardContent>
-          </Card>
+          {/* Show balances by account type if available (when no filter is applied) */}
+          {companyLedger.balancesByAccountType && !companyLedger.accountType ? (
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom variant="body2">
+                      Cash Balance
+                    </Typography>
+                    <Typography variant="h6" color="success.main">
+                      {formatCurrency(companyLedger.balancesByAccountType.CASH || 0)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom variant="body2">
+                      Bank Balance
+                    </Typography>
+                    <Typography variant="h6" color="success.main">
+                      {formatCurrency(companyLedger.balancesByAccountType.BANK || 0)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom variant="body2">
+                      Total Sales Revenue
+                    </Typography>
+                    <Typography variant="h6" color="info.main">
+                      {formatCurrency(companyLedger.balancesByAccountType.SALES || 0)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom variant="body2">
+                      Total Expenses
+                    </Typography>
+                    <Typography variant="h6" color="error.main">
+                      {formatCurrency((companyLedger.balancesByAccountType.EXPENSES || 0) + (companyLedger.balancesByAccountType.PURCHASES || 0))}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom variant="body2">
+                      Owner's Equity
+                    </Typography>
+                    <Typography variant="h6" color="warning.main">
+                      {formatCurrency(companyLedger.balancesByAccountType.EQUITY || 0)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom variant="body2">
+                      Net Assets (Cash + Bank)
+                    </Typography>
+                    <Typography variant="h6" color={companyLedger.balance >= 0 ? 'success.main' : 'error.main'}>
+                      {formatCurrency(typeof companyLedger.balance === 'number' ? companyLedger.balance : parseFloat(companyLedger.balance) || 0)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          ) : (
+            <Card sx={{ mb: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  {companyLedger.accountType ? `${companyLedger.accountType} Balance` : 'Company Balance'}
+                </Typography>
+                <Chip
+                  label={formatCurrency(typeof companyLedger.balance === 'number' ? companyLedger.balance : parseFloat(companyLedger.balance) || 0)}
+                  color={getBalanceColor(companyLedger.balance) as any}
+                  size="medium"
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <TableContainer component={Paper}>
             <Table>
@@ -946,7 +1027,7 @@ const AccountingPage: React.FC = () => {
                 {companyLedger.transactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{transaction.referenceType || 'General'}</TableCell>
+                    <TableCell>{transaction.accountType || transaction.referenceType || 'General'}</TableCell>
                     <TableCell>
                       <Chip
                         label={transaction.type}
