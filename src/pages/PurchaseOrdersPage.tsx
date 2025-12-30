@@ -317,6 +317,9 @@ const PurchaseOrdersPage: React.FC = () => {
         notes: order.notes || ''
       });
       
+      // Load discount amount
+      setDiscountAmount(order.discountAmount || 0);
+      
       // Load existing items into selectedProducts
       const existingItems: SelectedProduct[] = order.items.map(item => {
         // Find the full product details from the products list
@@ -352,7 +355,19 @@ const PurchaseOrdersPage: React.FC = () => {
     setEditingOrder(null);
     setSelectedProducts([]);
     setShowProductSelection(false);
+    setDiscountAmount(0);
+    setProcessPaymentOnCreate(false);
     reset();
+  };
+
+  const handleViewDetails = (order: PurchaseOrder) => {
+    setSelectedOrderDetails(order);
+    setOpenDetailsDialog(true);
+  };
+
+  const handleCloseDetailsDialog = () => {
+    setOpenDetailsDialog(false);
+    setSelectedOrderDetails(null);
   };
 
   const handleAddProduct = (product: Product) => {
@@ -413,18 +428,27 @@ const PurchaseOrdersPage: React.FC = () => {
     setSelectedProducts(selectedProducts.filter(p => p.productId !== productId));
   };
 
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [processPaymentOnCreate, setProcessPaymentOnCreate] = useState<boolean>(false);
+  const [paymentMethodOnCreate, setPaymentMethodOnCreate] = useState<string>('CASH');
+  const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<PurchaseOrder | null>(null);
+
   const calculateTotals = () => {
     const subtotal = selectedProducts.reduce((sum, product) => {
       const productTotal = typeof product.total === 'number' ? product.total : parseFloat(product.total) || 0;
       return sum + productTotal;
     }, 0);
 
+    const discount = discountAmount || 0;
+    const taxableAmount = Math.max(0, subtotal - discount);
+    
     // Get tax rate from settings, default to 8% if not set
     const taxRate = parseFloat(getSettingValue('TAXRATE', '0.08'));
-    const taxAmount = subtotal * taxRate;
-    const total = subtotal + taxAmount;
+    const taxAmount = taxableAmount * taxRate;
+    const total = subtotal - discount + taxAmount;
 
-    return { subtotal, taxAmount, total, taxRate };
+    return { subtotal, discount, taxAmount, total, taxRate };
   };
 
   const handleCreateOrder = async (data: any) => {
@@ -445,8 +469,7 @@ const PurchaseOrdersPage: React.FC = () => {
       const poNumber = `PO-${Date.now()}`;
 
       // Calculate totals
-      const { subtotal, taxAmount, total } = calculateTotals();
-      const discountAmount = 0;
+      const { subtotal, discount, taxAmount, total } = calculateTotals();
 
       // Convert selected products to items format
       const items = selectedProducts.map(product => ({
@@ -464,16 +487,40 @@ const PurchaseOrdersPage: React.FC = () => {
         purchaseMode, // Send the purchase mode to backend
         subtotal,
         taxAmount,
-        discountAmount,
+        discountAmount: discount,
         total,
         items
       };
 
-      await apiService.post('/purchase-orders', purchaseOrderData);
+      const response = await apiService.post('/purchase-orders', purchaseOrderData);
+      const createdOrder = response.data || response;
+      
+      // If process payment is enabled, process payment after order creation
+      if (processPaymentOnCreate && createdOrder) {
+        const orderId = typeof createdOrder === 'string' ? createdOrder : (createdOrder.id || createdOrder);
+        
+        try {
+          await apiService.post('/supplier-payments/payments', {
+            purchaseOrderId: orderId,
+            amount: total,
+            paymentMethod: paymentMethodOnCreate,
+            notes: `Payment processed with purchase order creation`,
+            userId: user?.id || 'cmg3r4eww0011uogxzfadd5lk'
+          });
+          showSnackbar('Purchase order created and payment processed successfully!', 'success');
+        } catch (paymentError: any) {
+          console.error('Payment processing error:', paymentError);
+          showSnackbar('Purchase order created, but payment processing failed', 'warning');
+        }
+      } else {
+        showSnackbar('Purchase order created successfully!', 'success');
+      }
+      
       handleCloseDialog();
+      setDiscountAmount(0);
+      setProcessPaymentOnCreate(false);
       fetchPurchaseOrders();
       fetchStats();
-      showSnackbar('Purchase order created successfully!', 'success');
     } catch (error) {
       console.error('Error creating purchase order:', error);
       showSnackbar('Failed to create purchase order', 'error');
@@ -487,8 +534,7 @@ const PurchaseOrdersPage: React.FC = () => {
       if (!editingOrder) return;
 
       // Calculate totals
-      const { subtotal, taxAmount, total } = calculateTotals();
-      const discountAmount = 0;
+      const { subtotal, discount, taxAmount, total } = calculateTotals();
 
       // Convert selected products to items format
       const items = selectedProducts.map(product => ({
@@ -503,7 +549,7 @@ const PurchaseOrdersPage: React.FC = () => {
         ...data,
         subtotal,
         taxAmount,
-        discountAmount,
+        discountAmount: discount,
         total,
         items
       };
@@ -654,60 +700,6 @@ const PurchaseOrdersPage: React.FC = () => {
         Purchase Orders
       </Typography>
 
-      {/* Statistics Cards */}
-      {stats && (
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Total Orders
-                </Typography>
-                <Typography variant="h4">
-                  {stats.totalOrders}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Pending Orders
-                </Typography>
-                <Typography variant="h4">
-                  {stats.pendingOrders}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Received Orders
-                </Typography>
-                <Typography variant="h4">
-                  {stats.receivedOrders}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Total Value
-                </Typography>
-                <Typography variant="h4">
-                  {formatCurrency(Number(stats.totalValue) || 0)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
-
       {/* Search and Filter */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
@@ -768,20 +760,19 @@ const PurchaseOrdersPage: React.FC = () => {
               <TableCell>Order Date</TableCell>
               <TableCell>Expected Delivery</TableCell>
               <TableCell>Total</TableCell>
-              <TableCell>Items</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={7} align="center">
                   <Typography>Loading purchase orders...</Typography>
                 </TableCell>
               </TableRow>
             ) : filteredPurchaseOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={7} align="center">
                   <Typography>No purchase orders found</Typography>
                 </TableCell>
               </TableRow>
@@ -824,12 +815,16 @@ const PurchaseOrdersPage: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">
-                        {order.items.length} items
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <Tooltip title="View Details">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleViewDetails(order)}
+                            color="info"
+                          >
+                            <SearchIcon />
+                          </IconButton>
+                        </Tooltip>
                         {getNextStatus(order.status) && (
                           <Tooltip title={getNextStatusLabel(order.status)}>
                             <Button
@@ -1157,6 +1152,61 @@ const PurchaseOrdersPage: React.FC = () => {
                   </Table>
                 </TableContainer>
 
+                {/* Discount Field */}
+                <Box sx={{ mt: 2, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Discount Amount"
+                    type="number"
+                    value={discountAmount}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0;
+                      setDiscountAmount(Math.max(0, value));
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">৳</InputAdornment>
+                      ),
+                    }}
+                    inputProps={{ min: 0, step: 0.01 }}
+                  />
+                </Box>
+
+                {/* Process Payment Checkbox */}
+                <Box sx={{ mb: 2 }}>
+                  <FormControl fullWidth>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <input
+                        type="checkbox"
+                        checked={processPaymentOnCreate}
+                        onChange={(e) => setProcessPaymentOnCreate(e.target.checked)}
+                        style={{ width: 18, height: 18 }}
+                      />
+                      <Typography variant="body2">
+                        Process payment with purchase
+                      </Typography>
+                    </Box>
+                    {processPaymentOnCreate && (
+                      <FormControl fullWidth sx={{ mt: 1 }}>
+                        <InputLabel size="small">Payment Method</InputLabel>
+                        <Select
+                          value={paymentMethodOnCreate}
+                          onChange={(e) => setPaymentMethodOnCreate(e.target.value)}
+                          label="Payment Method"
+                          size="small"
+                        >
+                          <MenuItem value="CASH">Cash</MenuItem>
+                          <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
+                          <MenuItem value="CHECK">Check</MenuItem>
+                          <MenuItem value="BKASH">bKash</MenuItem>
+                          <MenuItem value="OTHER">Other</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
+                  </FormControl>
+                </Box>
+
                 {/* Order Summary */}
                 <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
                   <Grid container spacing={2}>
@@ -1166,6 +1216,16 @@ const PurchaseOrdersPage: React.FC = () => {
                     <Grid item xs={6} sx={{ textAlign: 'right' }}>
                       <Typography variant="body2">{formatCurrency(calculateTotals().subtotal)}</Typography>
                     </Grid>
+                    {discountAmount > 0 && (
+                      <>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="error">Discount:</Typography>
+                        </Grid>
+                        <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                          <Typography variant="body2" color="error">-{formatCurrency(calculateTotals().discount)}</Typography>
+                        </Grid>
+                      </>
+                    )}
                     <Grid item xs={6}>
                       <Typography variant="body2">Tax ({(calculateTotals().taxRate * 100).toFixed(1)}%):</Typography>
                     </Grid>
@@ -1199,6 +1259,166 @@ const PurchaseOrdersPage: React.FC = () => {
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Purchase Order Details Dialog */}
+      <Dialog open={openDetailsDialog} onClose={handleCloseDetailsDialog} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Purchase Order Details - {selectedOrderDetails?.poNumber}
+        </DialogTitle>
+        <DialogContent>
+          {selectedOrderDetails && (
+            <Box>
+              {/* Order Information */}
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="textSecondary">Supplier</Typography>
+                  <Typography variant="body1">{selectedOrderDetails.supplier.name}</Typography>
+                  <Typography variant="body2" color="textSecondary">{selectedOrderDetails.supplier.company}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="textSecondary">Status</Typography>
+                  <Chip
+                    icon={getStatusIcon(selectedOrderDetails.status)}
+                    label={selectedOrderDetails.status.replace('_', ' ')}
+                    color={getStatusColor(selectedOrderDetails.status) as any}
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="textSecondary">Order Date</Typography>
+                  <Typography variant="body1">
+                    {new Date(selectedOrderDetails.orderDate).toLocaleDateString()}
+                  </Typography>
+                </Grid>
+                {selectedOrderDetails.expectedDelivery && (
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" color="textSecondary">Expected Delivery</Typography>
+                    <Typography variant="body1">
+                      {new Date(selectedOrderDetails.expectedDelivery).toLocaleDateString()}
+                    </Typography>
+                  </Grid>
+                )}
+              </Grid>
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* Items Table */}
+              <Typography variant="h6" sx={{ mb: 2 }}>Items ({selectedOrderDetails.items.length})</Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Product</TableCell>
+                      <TableCell>SKU</TableCell>
+                      <TableCell align="right">Quantity</TableCell>
+                      <TableCell align="right">Unit Price</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                      <TableCell align="right">Received</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedOrderDetails.items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <Typography variant="body2">{item.product.name}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="textSecondary">{item.product.sku}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">{item.quantity}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">{formatCurrency(item.unitPrice)}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2" fontWeight="bold">
+                            {formatCurrency(item.total)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">
+                            {item.receivedQuantity || 0} / {item.quantity}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* Order Summary */}
+              <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Subtotal:</Typography>
+                  </Grid>
+                  <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2">{formatCurrency(selectedOrderDetails.subtotal)}</Typography>
+                  </Grid>
+                  {selectedOrderDetails.discountAmount > 0 && (
+                    <>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="error">Discount:</Typography>
+                      </Grid>
+                      <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                        <Typography variant="body2" color="error">
+                          -{formatCurrency(selectedOrderDetails.discountAmount)}
+                        </Typography>
+                      </Grid>
+                    </>
+                  )}
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Tax:</Typography>
+                  </Grid>
+                  <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2">{formatCurrency(selectedOrderDetails.taxAmount)}</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="h6">Total:</Typography>
+                  </Grid>
+                  <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                    <Typography variant="h6" color="primary">
+                      {formatCurrency(selectedOrderDetails.total)}
+                    </Typography>
+                  </Grid>
+                  {selectedOrderDetails.paidAmount !== undefined && (
+                    <>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Paid:</Typography>
+                      </Grid>
+                      <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                        <Typography variant="body2" color="success.main">
+                          {formatCurrency(selectedOrderDetails.paidAmount || 0)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="error">Due:</Typography>
+                      </Grid>
+                      <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                        <Typography variant="body2" color="error" fontWeight="bold">
+                          {formatCurrency(selectedOrderDetails.dueAmount || 0)}
+                        </Typography>
+                      </Grid>
+                    </>
+                  )}
+                </Grid>
+              </Box>
+
+              {selectedOrderDetails.notes && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle2" color="textSecondary" gutterBottom>Notes</Typography>
+                  <Typography variant="body2">{selectedOrderDetails.notes}</Typography>
+                </>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDetailsDialog}>Close</Button>
+        </DialogActions>
       </Dialog>
 
       {/* Payment Dialog */}

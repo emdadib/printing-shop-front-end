@@ -22,6 +22,11 @@ import {
   Snackbar,
   Badge,
   Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import {
   Add,
@@ -38,6 +43,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { apiService } from '../services/api';
 import { useSettings } from '../hooks/useSettings';
+import { useAuth } from '../hooks/useAuth';
 
 interface Product {
   id: string;
@@ -82,6 +88,7 @@ const PurchaseOrderPOSPage: React.FC = () => {
   const location = useLocation();
   const selectedSupplierId = location.state?.selectedSupplierId;
   const { formatCurrency, getSettingValue } = useSettings();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -89,6 +96,11 @@ const PurchaseOrderPOSPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [productTypeFilter, setProductTypeFilter] = useState<string>('ALL');
   const [purchaseMode, setPurchaseMode] = useState<'FULL' | 'QUICK'>('QUICK');
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [processPayment, setProcessPayment] = useState<boolean>(true);
+  const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
+  const [openPaymentConfirmDialog, setOpenPaymentConfirmDialog] = useState(false);
+  const [purchaseOrderToPay, setPurchaseOrderToPay] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -241,16 +253,23 @@ const PurchaseOrderPOSPage: React.FC = () => {
     return cart.reduce((sum, item) => sum + item.total, 0);
   };
 
+  const calculateDiscount = () => {
+    return discountAmount || 0;
+  };
+
   const calculateTax = () => {
     const subtotal = calculateSubtotal();
+    const discount = calculateDiscount();
+    const taxableAmount = Math.max(0, subtotal - discount);
     const taxRate = parseFloat(getSettingValue('TAXRATE', '0.08'));
-    return subtotal * taxRate;
+    return taxableAmount * taxRate;
   };
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
+    const discount = calculateDiscount();
     const tax = calculateTax();
-    return subtotal + tax;
+    return subtotal - discount + tax;
   };
 
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
@@ -259,6 +278,71 @@ const PurchaseOrderPOSPage: React.FC = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!purchaseOrderToPay) return;
+
+    try {
+      setLoading(true);
+      const response = await apiService.post('/supplier-payments/payments', {
+        purchaseOrderId: purchaseOrderToPay.id,
+        amount: purchaseOrderToPay.total,
+        paymentMethod: paymentMethod,
+        notes: `Payment processed with purchase order creation`,
+        userId: user?.id || 'cmg3r4eww0011uogxzfadd5lk'
+      });
+
+      if (response.success) {
+        showSnackbar('Purchase order created and payment processed successfully!', 'success');
+        setOpenPaymentConfirmDialog(false);
+        setPurchaseOrderToPay(null);
+        
+        // Reset form and cart
+        setCart([]);
+        setDiscountAmount(0);
+        setProcessPayment(false);
+        reset({
+          supplierId: selectedSupplierId || '',
+          expectedDelivery: undefined,
+          notes: '',
+        });
+        
+        // Navigate back after a short delay
+        setTimeout(() => {
+          navigate('/purchase-orders');
+        }, 1000);
+      } else {
+        showSnackbar('Payment processing failed', 'error');
+      }
+    } catch (error: any) {
+      console.error('Error processing payment:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to process payment';
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelPayment = () => {
+    setOpenPaymentConfirmDialog(false);
+    setPurchaseOrderToPay(null);
+    showSnackbar('Purchase order created successfully!', 'success');
+    
+    // Reset form and cart
+    setCart([]);
+    setDiscountAmount(0);
+    setProcessPayment(false);
+    reset({
+      supplierId: selectedSupplierId || '',
+      expectedDelivery: undefined,
+      notes: '',
+    });
+    
+    // Navigate back after a short delay
+    setTimeout(() => {
+      navigate('/purchase-orders');
+    }, 1000);
   };
 
   const onSubmit = async (data: any) => {
@@ -275,9 +359,9 @@ const PurchaseOrderPOSPage: React.FC = () => {
       setLoading(true);
       const poNumber = `PO-${Date.now()}`;
       const subtotal = calculateSubtotal();
+      const discount = calculateDiscount();
       const taxAmount = calculateTax();
       const total = calculateTotal();
-      const discountAmount = 0;
 
       const purchaseOrderData = {
         ...data,
@@ -286,7 +370,7 @@ const PurchaseOrderPOSPage: React.FC = () => {
         purchaseMode,
         subtotal,
         taxAmount,
-        discountAmount,
+        discountAmount: discount,
         total,
         items: cart.map((item) => ({
           productId: item.productId,
@@ -297,8 +381,40 @@ const PurchaseOrderPOSPage: React.FC = () => {
         })),
       };
 
-      await apiService.post('/purchase-orders', purchaseOrderData);
-      showSnackbar('Purchase order created successfully!', 'success');
+      const response = await apiService.post('/purchase-orders', purchaseOrderData);
+      const createdOrder = response.data || response;
+      
+      // If process payment is enabled, process payment after order creation
+      if (processPayment && createdOrder) {
+        const orderId = typeof createdOrder === 'string' ? createdOrder : (createdOrder.id || createdOrder);
+        const orderTotal = total;
+        
+        // Show confirmation dialog
+        setPurchaseOrderToPay({
+          id: orderId,
+          poNumber,
+          total: orderTotal,
+          supplier: suppliers.find(s => s.id === data.supplierId)
+        });
+        setOpenPaymentConfirmDialog(true);
+      } else {
+        showSnackbar('Purchase order created successfully!', 'success');
+        
+        // Reset form and cart
+        setCart([]);
+        setDiscountAmount(0);
+        setProcessPayment(false);
+        reset({
+          supplierId: selectedSupplierId || '',
+          expectedDelivery: undefined,
+          notes: '',
+        });
+        
+        // Navigate back after a short delay
+        setTimeout(() => {
+          navigate('/purchase-orders');
+        }, 1000);
+      }
       
       // Reset form and cart
       setCart([]);
@@ -709,6 +825,63 @@ const PurchaseOrderPOSPage: React.FC = () => {
                 )}
               />
 
+              {/* Discount */}
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Discount Amount"
+                  type="number"
+                  value={discountAmount}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    setDiscountAmount(Math.max(0, value));
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        {getSettingValue('CURRENCY', 'USD')}
+                      </InputAdornment>
+                    ),
+                  }}
+                  inputProps={{ min: 0, step: 0.01 }}
+                />
+              </Box>
+
+              {/* Process Payment Checkbox */}
+              <Box sx={{ mb: 2 }}>
+                <FormControl fullWidth>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <input
+                      type="checkbox"
+                      checked={processPayment}
+                      onChange={(e) => setProcessPayment(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <Typography variant="body2">
+                      Process payment with purchase
+                    </Typography>
+                  </Box>
+                  {processPayment && (
+                    <FormControl fullWidth sx={{ mt: 1 }}>
+                      <InputLabel size="small">Payment Method</InputLabel>
+                      <Select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        label="Payment Method"
+                        size="small"
+                      >
+                        <MenuItem value="CASH">Cash</MenuItem>
+                        <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
+                        <MenuItem value="CHECK">Check</MenuItem>
+                        <MenuItem value="BKASH">bKash</MenuItem>
+                        <MenuItem value="OTHER">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                </FormControl>
+              </Box>
+
               {/* Totals */}
               <Divider sx={{ my: 2 }} />
               <Box sx={{ mb: 2 }}>
@@ -716,6 +889,12 @@ const PurchaseOrderPOSPage: React.FC = () => {
                   <Typography variant="body2">Subtotal:</Typography>
                   <Typography variant="body2">{formatCurrency(calculateSubtotal())}</Typography>
                 </Box>
+                {discountAmount > 0 && (
+                  <Box display="flex" justifyContent="space-between" mb={1}>
+                    <Typography variant="body2" color="error">Discount:</Typography>
+                    <Typography variant="body2" color="error">-{formatCurrency(calculateDiscount())}</Typography>
+                  </Box>
+                )}
                 <Box display="flex" justifyContent="space-between" mb={1}>
                   <Typography variant="body2">
                     Tax ({(parseFloat(getSettingValue('TAXRATE', '0.08')) * 100).toFixed(1)}%):
@@ -747,6 +926,38 @@ const PurchaseOrderPOSPage: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+
+      {/* Payment Confirmation Dialog */}
+      <Dialog
+        open={openPaymentConfirmDialog}
+        onClose={handleCancelPayment}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Confirm Payment Processing</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You are about to process payment for the following purchase order:
+          </DialogContentText>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="body2"><strong>PO Number:</strong> {purchaseOrderToPay?.poNumber}</Typography>
+            <Typography variant="body2"><strong>Supplier:</strong> {purchaseOrderToPay?.supplier?.name || 'N/A'}</Typography>
+            <Typography variant="body2"><strong>Total Amount:</strong> {formatCurrency(purchaseOrderToPay?.total || 0)}</Typography>
+            <Typography variant="body2"><strong>Payment Method:</strong> {paymentMethod}</Typography>
+          </Box>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            This will record a payment of {formatCurrency(purchaseOrderToPay?.total || 0)} for this purchase order.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelPayment} disabled={loading}>
+            Skip Payment
+          </Button>
+          <Button onClick={handleConfirmPayment} variant="contained" color="primary" disabled={loading}>
+            {loading ? 'Processing...' : 'Confirm & Process Payment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar */}
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>

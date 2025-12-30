@@ -22,7 +22,8 @@ import {
   AttachMoney,
   Schedule,
   Warning,
-  ContentCopy
+  ContentCopy,
+  AccountBalance
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
@@ -78,14 +79,48 @@ const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [cashBalanceLoading, setCashBalanceLoading] = useState(false);
 
   // Use real data from API or fallback to empty arrays
   const salesData = stats?.weeklySalesData || [];
   const orderStatusData = stats?.orderStatusData || [];
 
   useEffect(() => {
-    fetchDashboardStats();
+    // Fetch both dashboard stats and cash balance in parallel for better performance
+    const loadDashboardData = async () => {
+      await Promise.all([
+        fetchDashboardStats(),
+        fetchCashBalance()
+      ]);
+    };
+    loadDashboardData();
   }, []);
+
+  const fetchCashBalance = async () => {
+    try {
+      setCashBalanceLoading(true);
+      // Fetch with accountType=CASH filter to get only cash balance
+      const response = await apiService.get('/accounting/company/ledger?accountType=CASH&page=1&limit=1');
+      if (response.success && response.data) {
+        // When filtering by accountType, balance is directly in response.data.balance
+        const cashBal = response.data.balance ?? 0;
+        setCashBalance(typeof cashBal === 'number' ? cashBal : parseFloat(String(cashBal || 0)));
+      } else if (response.balance !== undefined) {
+        // Fallback: check response.balance directly
+        setCashBalance(typeof response.balance === 'number' ? response.balance : parseFloat(String(response.balance || 0)));
+      } else {
+        // If no balance found, try to get from balancesByAccountType
+        const cashBal = response.balancesByAccountType?.CASH ?? 0;
+        setCashBalance(typeof cashBal === 'number' ? cashBal : parseFloat(String(cashBal || 0)));
+      }
+    } catch (err) {
+      console.error('Error fetching cash balance:', err);
+      setCashBalance(0);
+    } finally {
+      setCashBalanceLoading(false);
+    }
+  };
 
   const fetchDashboardStats = async () => {
     try {
@@ -260,6 +295,41 @@ const DashboardPage: React.FC = () => {
                   </Typography>
                 </Box>
                 <Warning color="error" sx={{ fontSize: 40 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card 
+            sx={{ 
+              cursor: 'pointer',
+              '&:hover': {
+                boxShadow: 6,
+                transform: 'translateY(-2px)',
+                transition: 'all 0.2s ease-in-out'
+              }
+            }}
+            onClick={() => navigate('/accounting')}
+          >
+            <CardContent>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
+                    Cash Balance
+                  </Typography>
+                  {cashBalanceLoading ? (
+                    <CircularProgress size={24} />
+                  ) : (
+                    <Typography 
+                      variant="h4" 
+                      color={cashBalance !== null && cashBalance >= 0 ? 'success.main' : 'error.main'}
+                    >
+                      {formatCurrency(cashBalance !== null ? cashBalance : 0)}
+                    </Typography>
+                  )}
+                </Box>
+                <AccountBalance color={cashBalance !== null && cashBalance >= 0 ? 'success' : 'error'} sx={{ fontSize: 40 }} />
               </Box>
             </CardContent>
           </Card>

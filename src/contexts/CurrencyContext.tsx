@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useSelector } from 'react-redux';
 import { useSettings } from '@/hooks/useSettings';
 import { formatCurrency, getCurrencyInfo, CurrencyInfo } from '@/utils/currency';
+import { RootState } from '@/store';
 
 interface CurrencyContextType {
   currencyCode: string;
@@ -18,7 +20,9 @@ interface CurrencyProviderProps {
 }
 
 export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({ children }) => {
-  const { getSettingValue, loading: settingsLoading } = useSettings();
+  // Get authentication state from Redux store
+  const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
+  const { getSettingValue, loading: settingsLoading } = useSettings(isAuthenticated);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
 
   useEffect(() => {

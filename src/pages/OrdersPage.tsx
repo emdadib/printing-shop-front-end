@@ -207,66 +207,38 @@ const OrdersPage: React.FC = () => {
     fetchCustomers();
   }, []);
 
+  // Reset to page 0 when search term changes (before fetching)
+  useEffect(() => {
+    if (searchTerm) {
+      setPage(0);
+    }
+  }, [searchTerm]);
+
   useEffect(() => {
     fetchOrders();
-  }, [page, rowsPerPage, statusFilter, startDate, endDate]);
+  }, [page, rowsPerPage, statusFilter, startDate, endDate, searchTerm]);
 
-  useEffect(() => {
-    if (orders.length > 0) {
-      // Debounce the fetchDueAmounts call to avoid too frequent requests
-      const timeoutId = setTimeout(() => {
-        fetchDueAmounts();
-      }, 500);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [orders]);
-
-  const fetchDueAmounts = async () => {
+  // Fetch due amount for a specific order
+  const fetchDueAmountForOrder = async (orderId: string): Promise<number> => {
     try {
-      const dueAmounts: {[key: string]: number} = {};
+      const response = await apiService.get(`/payments/order/${orderId}/due`);
+      const dueAmount = response.data?.dueAmount || response.dueAmount || 0;
       
-      // Process orders in batches to avoid rate limiting
-      const batchSize = 5;
-      const batches = [];
-      for (let i = 0; i < orders.length; i += batchSize) {
-        batches.push(orders.slice(i, i + batchSize));
-      }
+      // Update the due amount for this specific order
+      setOrderDueAmounts(prev => ({
+        ...prev,
+        [orderId]: dueAmount
+      }));
       
-      for (const batch of batches) {
-        const promises = batch.map(async (order) => {
-          try {
-            console.log('Fetching due amount for order:', order.id);
-            const response = await apiService.get(`/payments/order/${order.id}/due`);
-            console.log('Due amount response:', response);
-            return {
-              orderId: order.id,
-              dueAmount: response.data?.dueAmount || response.dueAmount || 0
-            };
-          } catch (err) {
-            console.error('Error fetching due amount for order', order.id, ':', err);
-            return {
-              orderId: order.id,
-              dueAmount: Number(order.total) || 0
-            };
-          }
-        });
-        
-        const results = await Promise.all(promises);
-        results.forEach(result => {
-          dueAmounts[result.orderId] = result.dueAmount;
-        });
-        
-        // Add a small delay between batches to avoid rate limiting
-        if (batches.indexOf(batch) < batches.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-      }
-      
-      console.log('Final due amounts:', dueAmounts);
-      setOrderDueAmounts(dueAmounts);
+      return dueAmount;
     } catch (err) {
-      console.error('Fetch due amounts error:', err);
+      console.error('Error fetching due amount for order', orderId, ':', err);
+      // If API call fails, set due amount to 0 (assume fully paid or unknown)
+      setOrderDueAmounts(prev => ({
+        ...prev,
+        [orderId]: 0
+      }));
+      return 0;
     }
   };
 
@@ -291,9 +263,17 @@ const OrdersPage: React.FC = () => {
       setLoading(true);
       const params = new URLSearchParams();
       
-      // Add pagination parameters
-      params.append('page', (page + 1).toString()); // Backend uses 1-based pagination
-      params.append('limit', rowsPerPage.toString());
+      // If search is active, fetch all orders for client-side filtering
+      // Otherwise, use server-side pagination
+      if (searchTerm) {
+        // Fetch a large number of orders for client-side search and pagination
+        params.append('page', '1');
+        params.append('limit', '1000'); // Large limit to get all orders for search
+      } else {
+        // Use server-side pagination when no search
+        params.append('page', (page + 1).toString()); // Backend uses 1-based pagination
+        params.append('limit', rowsPerPage.toString());
+      }
       
       // Add status filter if not 'all'
       if (statusFilter && statusFilter !== 'all') {
@@ -314,7 +294,17 @@ const OrdersPage: React.FC = () => {
         setOrders(response.data);
         // Update total count from pagination info
         if (response.pagination) {
-          setTotalOrders(response.pagination.total);
+          if (searchTerm) {
+            // When searching, we'll set total based on filtered results after filtering
+            // For now, use the total from server as a fallback
+            setTotalOrders(response.pagination.total);
+          } else {
+            // Use server pagination total when not searching
+            setTotalOrders(response.pagination.total);
+          }
+        } else {
+          // Fallback if no pagination info
+          setTotalOrders(response.data.length);
         }
       } else if (Array.isArray(response)) {
         setOrders(response);
@@ -398,33 +388,20 @@ const OrdersPage: React.FC = () => {
     setSelectedOrder(order);
     setOpenDetailsDialog(true);
     
-    // Fetch the latest due amount for this specific order with a small delay
-    setTimeout(async () => {
-      try {
-        console.log('Fetching due amount for order details:', order.id);
-        const response = await apiService.get(`/payments/order/${order.id}/due`);
-        console.log('Due amount response for details:', response);
-        const dueAmount = response.data?.dueAmount || response.dueAmount || 0;
-        
-        // Update the due amount for this specific order
-        setOrderDueAmounts(prev => ({
-          ...prev,
-          [order.id]: dueAmount
-        }));
-      } catch (err) {
-        console.error('Error fetching due amount for order details', order.id, ':', err);
-      }
-    }, 100);
+    // Fetch the latest due amount for this specific order
+    fetchDueAmountForOrder(order.id);
   };
 
   const handleCloseDetailsDialog = () => {
     setOpenDetailsDialog(false);
     setSelectedOrder(null);
     
-    // Refresh due amounts when closing the dialog in case a payment was made
-    setTimeout(() => {
-      fetchDueAmounts();
-    }, 500);
+    // Refresh due amount for the selected order when closing the dialog in case a payment was made
+    if (selectedOrder) {
+      setTimeout(() => {
+        fetchDueAmountForOrder(selectedOrder.id);
+      }, 500);
+    }
   };
 
 
@@ -635,16 +612,16 @@ const OrdersPage: React.FC = () => {
                 console.error('Payment creation failed:', paymentResponse);
               } else {
                 console.log('Payment created successfully:', paymentResponse);
-                // Refresh due amounts after payment creation
+                // Refresh due amount for this specific order after payment creation
                 setTimeout(() => {
-                  fetchDueAmounts();
+                  fetchDueAmountForOrder(createdOrder.id);
                 }, 1000);
               }
             } else {
               // Assume success if response structure is unexpected
               console.log('Payment created successfully (unexpected response format):', paymentResponse);
               setTimeout(() => {
-                fetchDueAmounts();
+                fetchDueAmountForOrder(createdOrder.id);
               }, 1000);
             }
           }
@@ -682,12 +659,14 @@ const OrdersPage: React.FC = () => {
         showSnackbar('Order created successfully, but payment failed. Please process payment separately.', 'warning');
       }
       
-      // Refresh due amounts after order/payment creation
-      setTimeout(() => {
-        fetchDueAmounts().catch(err => {
-          console.error('Error fetching due amounts:', err);
-        });
-      }, 1000);
+      // Refresh due amount for the created order after order/payment creation
+      if (createdOrder?.id) {
+        setTimeout(() => {
+          fetchDueAmountForOrder(createdOrder.id).catch(err => {
+            console.error('Error fetching due amount:', err);
+          });
+        }, 1000);
+      }
     } catch (err: any) {
       console.error('Order creation error:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Failed to create order';
@@ -697,9 +676,8 @@ const OrdersPage: React.FC = () => {
       if (err?.response?.status === 201 || err?.response?.status === 200) {
         // Order was created, just refresh
         fetchOrders();
-        setTimeout(() => {
-          fetchDueAmounts();
-        }, 1000);
+        // Note: We can't fetch due amount here as we don't have the order ID
+        // It will be fetched when the order list is refreshed
       }
     } finally {
       setSubmitting(false);
@@ -782,16 +760,20 @@ const OrdersPage: React.FC = () => {
   const handleOpenPaymentDialog = async (order: Order) => {
     try {
       console.log('Opening payment dialog for order:', order.id);
-      const response = await apiService.get(`/payments/order/${order.id}/due`);
-      console.log('Payment dialog due amount response:', response);
-      const dueData = response.data || response;
-      setOrderDueAmount(dueData.dueAmount || 0);
-      setPaymentAmount(dueData.dueAmount || 0);
+      const dueAmount = await fetchDueAmountForOrder(order.id);
+      setOrderDueAmount(dueAmount);
+      setPaymentAmount(dueAmount);
       setSelectedOrderForPayment(order);
       setOpenPaymentDialog(true);
     } catch (err) {
       setError('Failed to get order due amount');
       console.error('Get due amount error:', err);
+      // Fallback to order total
+      const fallbackAmount = Number(order.total) || 0;
+      setOrderDueAmount(fallbackAmount);
+      setPaymentAmount(fallbackAmount);
+      setSelectedOrderForPayment(order);
+      setOpenPaymentDialog(true);
     }
   };
 
@@ -844,9 +826,9 @@ const OrdersPage: React.FC = () => {
       console.log('Payment submission response:', paymentResponse);
       handleClosePaymentDialog();
       fetchOrders();
-      // Refresh due amounts after payment
+      // Refresh due amount for this specific order after payment
       setTimeout(() => {
-        fetchDueAmounts();
+        fetchDueAmountForOrder(selectedOrderForPayment.id);
       }, 1000);
       setError(null);
     } catch (err) {
@@ -867,6 +849,19 @@ const OrdersPage: React.FC = () => {
     
     return matchesSearch;
   });
+
+  // Update totalOrders when searching (based on filtered results)
+  useEffect(() => {
+    if (searchTerm && filteredOrders.length !== totalOrders) {
+      setTotalOrders(filteredOrders.length);
+    }
+  }, [searchTerm, filteredOrders.length]);
+
+  // For pagination: if search is active, use client-side pagination on filtered results
+  // Otherwise, server handles pagination (orders are already paginated)
+  const paginatedOrders = searchTerm 
+    ? filteredOrders.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+    : orders; // Use orders directly when no search (server already paginated)
 
   return (
     <Box p={3}>
@@ -994,7 +989,6 @@ const OrdersPage: React.FC = () => {
               <TableCell>Type</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Total</TableCell>
-              <TableCell>Due Amount</TableCell>
               <TableCell>Created</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
@@ -1002,23 +996,42 @@ const OrdersPage: React.FC = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={7} align="center">
                   <CircularProgress />
                 </TableCell>
               </TableRow>
             ) : filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={7} align="center">
                   <Typography variant="body2" color="text.secondary">
                     No orders found
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              filteredOrders.map((order) => (
+              paginatedOrders.map((order) => (
               <TableRow key={order.id}>
                 <TableCell>
-                  <Typography variant="subtitle2">{order.orderNumber}</Typography>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="subtitle2">{order.orderNumber}</Typography>
+                    {(() => {
+                      const dueAmount = orderDueAmounts[order.id];
+                      // Show flag if order has due amount
+                      if (dueAmount !== undefined && dueAmount > 0) {
+                        return (
+                          <Tooltip title={`Due Amount: ${formatCurrency(dueAmount)}`}>
+                            <Chip 
+                              label="Due" 
+                              size="small" 
+                              color="error"
+                              sx={{ height: 20, fontSize: '0.7rem' }}
+                            />
+                          </Tooltip>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </Box>
                 </TableCell>
                                  <TableCell>
                    <Typography variant="subtitle2">
@@ -1047,15 +1060,6 @@ const OrdersPage: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell>{formatCurrency(Number(order.total) || 0)}</TableCell>
-                <TableCell>
-                  <Typography 
-                    variant="body2" 
-                    color={orderDueAmounts[order.id] > 0 ? 'error' : 'success'}
-                    fontWeight="bold"
-                  >
-                    {formatCurrency(orderDueAmounts[order.id] || Number(order.total) || 0)}
-                  </Typography>
-                </TableCell>
                 <TableCell>
                   {new Date(order.createdAt).toLocaleDateString()}
                 </TableCell>
@@ -1092,7 +1096,10 @@ const OrdersPage: React.FC = () => {
                     </IconButton>
                   </Tooltip>
                   {/* Only show Process Payment button if there's still an amount due */}
-                  {(orderDueAmounts[order.id] || 0) > 0 && (
+                  {(() => {
+                    const dueAmount = orderDueAmounts[order.id];
+                    return dueAmount !== undefined && dueAmount > 0;
+                  })() && (
                     <Tooltip title="Process Payment">
                       <IconButton 
                         size="small" 
@@ -1110,9 +1117,11 @@ const OrdersPage: React.FC = () => {
         </Table>
         <TablePagination
           component="div"
-          count={totalOrders}
+          count={searchTerm ? filteredOrders.length : totalOrders}
           page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
+          onPageChange={(_, newPage) => {
+            setPage(newPage);
+          }}
           rowsPerPage={rowsPerPage}
           onRowsPerPageChange={(e) => {
             setRowsPerPage(parseInt(e.target.value, 10));
@@ -1151,7 +1160,11 @@ const OrdersPage: React.FC = () => {
               <Grid item xs={12} md={3}>
                 <Box textAlign="center">
                   <Typography variant="h4" color="error.main">
-                    {formatCurrency(filteredOrders.reduce((sum, order) => sum + (orderDueAmounts[order.id] || 0), 0))}
+                    {formatCurrency(filteredOrders.reduce((sum, order) => {
+                      const dueAmount = orderDueAmounts[order.id];
+                      // Only include if due amount exists and is greater than 0
+                      return sum + (dueAmount !== undefined && dueAmount > 0 ? dueAmount : 0);
+                    }, 0))}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Total Due Amount
@@ -1161,8 +1174,11 @@ const OrdersPage: React.FC = () => {
               <Grid item xs={12} md={3}>
                 <Box textAlign="center">
                   <Typography variant="h4" color="success.main">
-                    {formatCurrency(filteredOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0) - 
-                       filteredOrders.reduce((sum, order) => sum + (orderDueAmounts[order.id] || 0), 0))}
+                    {formatCurrency(filteredOrders.reduce((sum, order) => {
+                      const total = Number(order.total) || 0;
+                      const dueAmount = orderDueAmounts[order.id] ?? total;
+                      return sum + (total - dueAmount);
+                    }, 0))}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Total Collected
@@ -1259,13 +1275,28 @@ const OrdersPage: React.FC = () => {
                   </Typography>
                 )}
                 <Typography><strong>Total:</strong> {formatCurrency(Number(selectedOrder.total) || 0)}</Typography>
-                <Typography 
-                  variant="body1" 
-                  color={orderDueAmounts[selectedOrder.id] > 0 ? 'error' : 'success'}
-                  fontWeight="bold"
-                >
-                  <strong>Due Amount:</strong> {formatCurrency(orderDueAmounts[selectedOrder.id] || Number(selectedOrder.total) || 0)}
-                </Typography>
+                {(() => {
+                  const dueAmount = orderDueAmounts[selectedOrder.id];
+                  if (dueAmount !== undefined && dueAmount > 0) {
+                    return (
+                      <Typography 
+                        variant="body1" 
+                        color="error"
+                        fontWeight="bold"
+                      >
+                        <strong>Due Amount:</strong> {formatCurrency(dueAmount)}
+                      </Typography>
+                    );
+                  }
+                  return (
+                    <Typography 
+                      variant="body1" 
+                      color="success.main"
+                    >
+                      <strong>Due Amount:</strong> {dueAmount === 0 ? 'Paid' : '-'}
+                    </Typography>
+                  );
+                })()}
                 <Typography><strong>Created:</strong> {new Date(selectedOrder.createdAt).toLocaleString()}</Typography>
                 
                 {/* Status Update Section */}
@@ -1353,7 +1384,11 @@ const OrdersPage: React.FC = () => {
         <DialogActions>
           <Button onClick={handleCloseDetailsDialog}>Close</Button>
           {/* Only show Pay Order button if there's still an amount due */}
-          {(orderDueAmounts[selectedOrder?.id || ''] || 0) > 0 && (
+          {(() => {
+            if (!selectedOrder) return false;
+            const dueAmount = orderDueAmounts[selectedOrder.id];
+            return dueAmount !== undefined && dueAmount > 0;
+          })() && (
             <Button 
               variant="contained" 
               color="primary"

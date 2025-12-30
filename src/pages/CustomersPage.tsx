@@ -62,7 +62,10 @@ interface Customer {
 const customerSchema = yup.object({
   firstName: yup.string().required('First name is required'),
   lastName: yup.string().required('Last name is required'),
-  email: yup.string().email('Please provide a valid email').required('Email is required'),
+  email: yup.string().optional().test('email', 'Please provide a valid email', (value) => {
+    if (!value || value.trim() === '') return true; // Allow empty values
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); // Validate email format if provided
+  }),
   phone: yup.string().required('Phone number is required'),
   address: yup.string()
 });
@@ -479,7 +482,7 @@ const CustomersPage: React.FC = () => {
                       <TextField
                         {...field}
                         fullWidth
-                        label="Email"
+                        label="Email (Optional)"
                         type="email"
                         error={!!errors.email}
                         helperText={errors.email?.message}
