@@ -34,6 +34,7 @@ import {
   People as PeopleIcon,
   Business as BusinessIcon,
   TrendingDown as TrendingDownIcon,
+  TrendingUp as TrendingUpIcon,
   AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
@@ -84,6 +85,9 @@ interface ProfitSummary {
     deposits: number;
     withdrawals: number;
     netProfit: number;
+    operationalProfit?: number;
+    operationalLoss?: number;
+    netOperationalProfit?: number;
   };
   regular: {
     deposits: number;
@@ -94,6 +98,11 @@ interface ProfitSummary {
     deposits: number;
     withdrawals: number;
     netProfit: number;
+  };
+  operational?: {
+    profit: number;
+    loss: number;
+    net: number;
   };
   transactions: Array<{
     id: string;
@@ -781,6 +790,14 @@ const AccountingPage: React.FC = () => {
             </Button>
             <Button
               variant="contained"
+              color="success"
+              startIcon={<TrendingUpIcon />}
+              onClick={() => handleOpenProfitDialog('deposit')}
+            >
+              Deposit Cash
+            </Button>
+            <Button
+              variant="contained"
               color="warning"
               startIcon={<TrendingDownIcon />}
               onClick={() => handleOpenProfitDialog('withdraw')}
@@ -803,10 +820,13 @@ const AccountingPage: React.FC = () => {
                   {formatCurrency(profitSummary.total?.netProfit || 0)}
                 </Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                  Deposits: {formatCurrency(profitSummary.total?.deposits || 0)}
+                  Operational: {formatCurrency(profitSummary.operational?.net || profitSummary.total?.netOperationalProfit || 0)}
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  Withdrawals: {formatCurrency(profitSummary.total?.withdrawals || 0)}
+                  Manual Deposits: {formatCurrency(profitSummary.total?.deposits || 0)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Manual Withdrawals: {formatCurrency(profitSummary.total?.withdrawals || 0)}
                 </Typography>
               </CardContent>
             </Card>

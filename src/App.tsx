@@ -40,7 +40,7 @@ const App: React.FC = () => {
   const dispatch = useDispatch()
   const { isAuthenticated } = useSelector((state: RootState) => state.auth)
   const { initializeAuth } = useAuth()
-  const { isEnabled: photocopyEnabled } = usePhotocopySetting()
+  const { isEnabled: photocopyEnabled } = usePhotocopySetting(isAuthenticated)
 
   // Check if user is authenticated on app load
   const { isLoading } = useQuery(

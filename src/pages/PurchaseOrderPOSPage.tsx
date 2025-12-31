@@ -22,6 +22,13 @@ import {
   Snackbar,
   Badge,
   Autocomplete,
+  Checkbox,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import {
   Add,
@@ -38,6 +45,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { apiService } from '../services/api';
 import { useSettings } from '../hooks/useSettings';
+import { useAuth } from '../hooks/useAuth';
 
 interface Product {
   id: string;
@@ -82,6 +90,7 @@ const PurchaseOrderPOSPage: React.FC = () => {
   const location = useLocation();
   const selectedSupplierId = location.state?.selectedSupplierId;
   const { formatCurrency, getSettingValue } = useSettings();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -89,6 +98,11 @@ const PurchaseOrderPOSPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [productTypeFilter, setProductTypeFilter] = useState<string>('ALL');
   const [purchaseMode, setPurchaseMode] = useState<'FULL' | 'QUICK'>('QUICK');
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [processPayment, setProcessPayment] = useState<boolean>(true);
+  const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
+  const [openPaymentConfirmDialog, setOpenPaymentConfirmDialog] = useState(false);
+  const [purchaseOrderToPay, setPurchaseOrderToPay] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -191,7 +205,8 @@ const PurchaseOrderPOSPage: React.FC = () => {
         )
       );
     } else {
-      const unitPrice = product.baseCostPrice || product.basePrice || 0;
+      // Use product's actual cost price, fallback to base price, minimum 1
+      const unitPrice = Math.max(1, product.baseCostPrice || product.basePrice || 1);
       setCart([
         ...cart,
         {
@@ -207,27 +222,28 @@ const PurchaseOrderPOSPage: React.FC = () => {
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
+    // Ensure quantity is always an integer and at least 1
+    const qty = Math.max(1, Math.floor(quantity));
+    if (qty <= 0) {
       removeFromCart(productId);
       return;
     }
     setCart(
       cart.map((item) =>
         item.productId === productId
-          ? { ...item, quantity, total: quantity * item.unitPrice }
+          ? { ...item, quantity: qty, total: qty * item.unitPrice }
           : item
       )
     );
   };
 
   const updateCartPrice = (productId: string, price: number) => {
-    if (price < 0) {
-      return;
-    }
+    // Ensure price is always an integer and at least 1
+    const rate = Math.max(1, Math.floor(price));
     setCart(
       cart.map((item) =>
         item.productId === productId
-          ? { ...item, unitPrice: price, total: item.quantity * price }
+          ? { ...item, unitPrice: rate, total: item.quantity * rate }
           : item
       )
     );
@@ -241,16 +257,23 @@ const PurchaseOrderPOSPage: React.FC = () => {
     return cart.reduce((sum, item) => sum + item.total, 0);
   };
 
+  const calculateDiscount = () => {
+    return discountAmount || 0;
+  };
+
   const calculateTax = () => {
     const subtotal = calculateSubtotal();
+    const discount = calculateDiscount();
+    const taxableAmount = Math.max(0, subtotal - discount);
     const taxRate = parseFloat(getSettingValue('TAXRATE', '0.08'));
-    return subtotal * taxRate;
+    return taxableAmount * taxRate;
   };
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
+    const discount = calculateDiscount();
     const tax = calculateTax();
-    return subtotal + tax;
+    return subtotal - discount + tax;
   };
 
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
@@ -259,6 +282,71 @@ const PurchaseOrderPOSPage: React.FC = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!purchaseOrderToPay) return;
+
+    try {
+      setLoading(true);
+      const response = await apiService.post('/supplier-payments/payments', {
+        purchaseOrderId: purchaseOrderToPay.id,
+        amount: purchaseOrderToPay.total,
+        paymentMethod: paymentMethod,
+        notes: `Payment processed with purchase order creation`,
+        userId: user?.id || 'cmg3r4eww0011uogxzfadd5lk'
+      });
+
+      if (response.success) {
+        showSnackbar('Purchase order created and payment processed successfully!', 'success');
+        setOpenPaymentConfirmDialog(false);
+        setPurchaseOrderToPay(null);
+        
+        // Reset form and cart
+        setCart([]);
+        setDiscountAmount(0);
+        setProcessPayment(false);
+        reset({
+          supplierId: selectedSupplierId || '',
+          expectedDelivery: undefined,
+          notes: '',
+        });
+        
+        // Navigate back after a short delay
+        setTimeout(() => {
+          navigate('/purchase-orders');
+        }, 1000);
+      } else {
+        showSnackbar('Payment processing failed', 'error');
+      }
+    } catch (error: any) {
+      console.error('Error processing payment:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to process payment';
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelPayment = () => {
+    setOpenPaymentConfirmDialog(false);
+    setPurchaseOrderToPay(null);
+    showSnackbar('Purchase order created successfully!', 'success');
+    
+    // Reset form and cart
+    setCart([]);
+    setDiscountAmount(0);
+    setProcessPayment(false);
+    reset({
+      supplierId: selectedSupplierId || '',
+      expectedDelivery: undefined,
+      notes: '',
+    });
+    
+    // Navigate back after a short delay
+    setTimeout(() => {
+      navigate('/purchase-orders');
+    }, 1000);
   };
 
   const onSubmit = async (data: any) => {
@@ -275,9 +363,9 @@ const PurchaseOrderPOSPage: React.FC = () => {
       setLoading(true);
       const poNumber = `PO-${Date.now()}`;
       const subtotal = calculateSubtotal();
+      const discount = calculateDiscount();
       const taxAmount = calculateTax();
       const total = calculateTotal();
-      const discountAmount = 0;
 
       const purchaseOrderData = {
         ...data,
@@ -286,7 +374,7 @@ const PurchaseOrderPOSPage: React.FC = () => {
         purchaseMode,
         subtotal,
         taxAmount,
-        discountAmount,
+        discountAmount: discount,
         total,
         items: cart.map((item) => ({
           productId: item.productId,
@@ -297,21 +385,41 @@ const PurchaseOrderPOSPage: React.FC = () => {
         })),
       };
 
-      await apiService.post('/purchase-orders', purchaseOrderData);
-      showSnackbar('Purchase order created successfully!', 'success');
+      const response = await apiService.post('/purchase-orders', purchaseOrderData);
+      const createdOrder = response.data || response;
       
-      // Reset form and cart
-      setCart([]);
-      reset({
-        supplierId: selectedSupplierId || '',
-        expectedDelivery: undefined,
-        notes: '',
-      });
-      
-      // Navigate back after a short delay
-      setTimeout(() => {
-        navigate('/purchase-orders');
-      }, 1000);
+      // If process payment is enabled, process payment after order creation
+      if (processPayment && createdOrder) {
+        const orderId = typeof createdOrder === 'string' ? createdOrder : (createdOrder.id || createdOrder);
+        const orderTotal = total;
+        
+        // Show confirmation dialog
+        setPurchaseOrderToPay({
+          id: orderId,
+          poNumber,
+          total: orderTotal,
+          supplier: suppliers.find(s => s.id === data.supplierId)
+        });
+        setOpenPaymentConfirmDialog(true);
+        // Don't reset or navigate here - let the payment dialog handle it
+      } else {
+        showSnackbar('Purchase order created successfully!', 'success');
+        
+        // Reset form and cart
+        setCart([]);
+        setDiscountAmount(0);
+        setProcessPayment(false);
+        reset({
+          supplierId: selectedSupplierId || '',
+          expectedDelivery: undefined,
+          notes: '',
+        });
+        
+        // Navigate back after a short delay
+        setTimeout(() => {
+          navigate('/purchase-orders');
+        }, 1000);
+      }
     } catch (err: any) {
       console.error('Purchase order creation error:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Failed to create purchase order';
@@ -489,89 +597,83 @@ const PurchaseOrderPOSPage: React.FC = () => {
               Purchase Order Summary
             </Typography>
             
-            {/* Supplier Selection */}
-            <Controller
-              name="supplierId"
-              control={control}
-              render={({ field }) => (
-                <Autocomplete
-                  options={suppliers}
-                  getOptionLabel={(option) => `${option.name}${option.company ? ` - ${option.company}` : ''}${option.email ? ` (${option.email})` : ''}`}
-                  filterOptions={(options, { inputValue }) => {
-                    const searchTerm = inputValue.toLowerCase();
-                    return options.filter((option) =>
-                      option.name.toLowerCase().includes(searchTerm) ||
-                      option.company.toLowerCase().includes(searchTerm) ||
-                      option.email.toLowerCase().includes(searchTerm) ||
-                      option.phone.toLowerCase().includes(searchTerm)
-                    );
-                  }}
-                  value={suppliers.find((s) => s.id === field.value) || null}
-                  onChange={(_, newValue) => {
-                    field.onChange(newValue ? newValue.id : '');
-                  }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Supplier *"
-                      size="small"
-                      error={!!errors.supplierId}
-                      helperText={errors.supplierId?.message}
-                      placeholder="Search by name, company, or email..."
+            {/* Supplier, Purchase Mode, and Expected Delivery in one row */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              {/* Supplier Selection */}
+              <Grid item xs={12} sm={5}>
+                <Controller
+                  name="supplierId"
+                  control={control}
+                  render={({ field }) => (
+                    <Autocomplete
+                      options={suppliers}
+                      getOptionLabel={(option) => `${option.name}${option.company ? ` - ${option.company}` : ''}${option.email ? ` (${option.email})` : ''}`}
+                      filterOptions={(options, { inputValue }) => {
+                        const searchTerm = inputValue.toLowerCase();
+                        return options.filter((option) =>
+                          option.name.toLowerCase().includes(searchTerm) ||
+                          option.company.toLowerCase().includes(searchTerm) ||
+                          option.email.toLowerCase().includes(searchTerm) ||
+                          option.phone.toLowerCase().includes(searchTerm)
+                        );
+                      }}
+                      value={suppliers.find((s) => s.id === field.value) || null}
+                      onChange={(_, newValue) => {
+                        field.onChange(newValue ? newValue.id : '');
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Supplier *"
+                          size="small"
+                          error={!!errors.supplierId}
+                          helperText={errors.supplierId?.message}
+                          placeholder="Search supplier..."
+                        />
+                      )}
+                      noOptionsText="No suppliers found"
                     />
                   )}
-                  sx={{ mb: 2 }}
-                  noOptionsText="No suppliers found"
                 />
-              )}
-            />
+              </Grid>
 
-            {/* Purchase Mode */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Purchase Mode
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant={purchaseMode === 'FULL' ? 'contained' : 'outlined'}
-                  size="small"
-                  onClick={() => setPurchaseMode('FULL')}
-                  fullWidth
-                >
-                  Full PO
-                </Button>
-                <Button
-                  variant={purchaseMode === 'QUICK' ? 'contained' : 'outlined'}
-                  size="small"
-                  onClick={() => setPurchaseMode('QUICK')}
-                  fullWidth
-                >
-                  Quick
-                </Button>
-              </Box>
-              <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
-                {purchaseMode === 'FULL'
-                  ? 'Full workflow: Draft → Sent → Confirmed → Received'
-                  : 'Quick: Direct to Received'}
-              </Typography>
-            </Box>
-
-            {/* Expected Delivery */}
-            <Controller
-              name="expectedDelivery"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  size="small"
-                  label="Expected Delivery"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ mb: 2 }}
+              {/* Purchase Mode */}
+              <Grid item xs={12} sm={3}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={purchaseMode === 'QUICK'}
+                      onChange={(e) => setPurchaseMode(e.target.checked ? 'QUICK' : 'FULL')}
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                      {purchaseMode === 'QUICK' ? 'Quick Mode' : 'Full PO Mode'}
+                    </Typography>
+                  }
+                  sx={{ alignItems: 'center', mt: 0.5 }}
                 />
-              )}
-            />
+              </Grid>
+
+              {/* Expected Delivery */}
+              <Grid item xs={12} sm={4}>
+                <Controller
+                  name="expectedDelivery"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      size="small"
+                      label="Expected Delivery"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+            </Grid>
           </Paper>
 
           {/* Cart Items */}
@@ -599,90 +701,110 @@ const PurchaseOrderPOSPage: React.FC = () => {
                       border: 1,
                       borderColor: 'divider',
                       display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'stretch',
-                      py: 1.5,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 1,
+                      py: 1,
+                      px: 1.5,
                     }}
                   >
-                    {/* Product Name and Delete Button */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                        {item.product.name}
-                      </Typography>
+                    {/* Product Name - Takes most space */}
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        mr: 1
+                      }}
+                    >
+                      {item.product.name}
+                    </Typography>
+
+                    {/* Quantity Controls */}
+                    <Box display="flex" alignItems="center" gap={0.5} sx={{ flexShrink: 0 }}>
                       <IconButton
                         size="small"
-                        color="error"
-                        onClick={() => removeFromCart(item.productId)}
+                        onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
+                        sx={{ p: 0.5 }}
                       >
-                        <Delete fontSize="small" />
+                        <Remove fontSize="small" />
+                      </IconButton>
+                      <TextField
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const qty = parseInt(e.target.value) || 1;
+                          updateCartQuantity(item.productId, qty);
+                        }}
+                        inputProps={{ 
+                          min: 1,
+                          step: 1,
+                          style: { textAlign: 'center', padding: '4px 8px', width: '40px' }
+                        }}
+                        size="small"
+                        sx={{ width: 60 }}
+                        variant="outlined"
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
+                        sx={{ p: 0.5 }}
+                      >
+                        <Add fontSize="small" />
                       </IconButton>
                     </Box>
 
-                    {/* Quantity, Price, and Total Row */}
-                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                      {/* Quantity Controls */}
-                      <Box display="flex" alignItems="center" gap={0.5}>
-                        <IconButton
-                          size="small"
-                          onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
-                          sx={{ p: 0.5 }}
-                        >
-                          <Remove fontSize="small" />
-                        </IconButton>
-                        <TextField
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const qty = parseInt(e.target.value) || 0;
-                            updateCartQuantity(item.productId, qty);
-                          }}
-                          inputProps={{ 
-                            min: 1,
-                            style: { textAlign: 'center', padding: '4px 8px', width: '50px' }
-                          }}
-                          size="small"
-                          sx={{ width: 70 }}
-                          variant="outlined"
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
-                          sx={{ p: 0.5 }}
-                        >
-                          <Add fontSize="small" />
-                        </IconButton>
-                      </Box>
+                    {/* Price Input */}
+                    <TextField
+                      type="number"
+                      value={item.unitPrice}
+                      onChange={(e) => {
+                        const price = parseInt(e.target.value) || 1;
+                        updateCartPrice(item.productId, price);
+                      }}
+                      inputProps={{ 
+                        min: 1,
+                        step: 1,
+                        style: { textAlign: 'right', padding: '4px 8px', width: '80px' }
+                      }}
+                      size="small"
+                      sx={{ width: 130, flexShrink: 0 }}
+                      variant="outlined"
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start" sx={{ fontSize: '0.7rem', mr: 0.5 }}>
+                            {getSettingValue('CURRENCY', 'USD')}
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
 
-                      {/* Price Input */}
-                      <TextField
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => {
-                          const price = parseFloat(e.target.value) || 0;
-                          updateCartPrice(item.productId, price);
-                        }}
-                        inputProps={{ 
-                          min: 0,
-                          step: 0.01,
-                          style: { textAlign: 'right', padding: '4px 8px' }
-                        }}
-                        size="small"
-                        sx={{ width: 110 }}
-                        variant="outlined"
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start" sx={{ fontSize: '0.75rem', mr: 0.5 }}>
-                              {getSettingValue('CURRENCY', 'USD')}
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
+                    {/* Total */}
+                    <Typography 
+                      variant="body2" 
+                      fontWeight="bold" 
+                      sx={{ 
+                        minWidth: 80, 
+                        textAlign: 'right',
+                        flexShrink: 0
+                      }}
+                    >
+                      {formatCurrency(item.total)}
+                    </Typography>
 
-                      {/* Total */}
-                      <Typography variant="body2" fontWeight="bold" sx={{ ml: 'auto', minWidth: 90, textAlign: 'right' }}>
-                        {formatCurrency(item.total)}
-                      </Typography>
-                    </Box>
+                    {/* Delete Button */}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeFromCart(item.productId)}
+                      sx={{ flexShrink: 0, ml: 0.5 }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
                   </ListItem>
                 ))}
               </List>
@@ -692,22 +814,82 @@ const PurchaseOrderPOSPage: React.FC = () => {
           {/* Order Totals & Submit */}
           <Paper sx={{ p: 2, borderRadius: 0, boxShadow: -1 }}>
             <form onSubmit={handleSubmit(onSubmit)}>
-              {/* Notes */}
-              <Controller
-                name="notes"
-                control={control}
-                render={({ field }) => (
+              {/* Notes and Discount in one row - equal size */}
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="notes"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        size="small"
+                        label="Notes (Optional)"
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <TextField
-                    {...field}
                     fullWidth
                     size="small"
-                    label="Notes (Optional)"
-                    multiline
-                    rows={2}
-                    sx={{ mb: 2 }}
+                    label="Discount Amount"
+                    type="number"
+                    value={discountAmount}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0;
+                      setDiscountAmount(Math.max(0, value));
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          {getSettingValue('CURRENCY', 'USD')}
+                        </InputAdornment>
+                      ),
+                    }}
+                    inputProps={{ min: 0, step: 0.01 }}
                   />
+                </Grid>
+              </Grid>
+
+              {/* Process Payment Checkbox and Payment Method in one row - equal size */}
+              <Grid container spacing={2} sx={{ mb: 2 }} alignItems="center">
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={processPayment}
+                        onChange={(e) => setProcessPayment(e.target.checked)}
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Process payment with purchase
+                      </Typography>
+                    }
+                  />
+                </Grid>
+                {processPayment && (
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Payment Method</InputLabel>
+                      <Select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        label="Payment Method"
+                      >
+                        <MenuItem value="CASH">Cash</MenuItem>
+                        <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
+                        <MenuItem value="CHECK">Check</MenuItem>
+                        <MenuItem value="BKASH">bKash</MenuItem>
+                        <MenuItem value="OTHER">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
                 )}
-              />
+              </Grid>
 
               {/* Totals */}
               <Divider sx={{ my: 2 }} />
@@ -716,6 +898,12 @@ const PurchaseOrderPOSPage: React.FC = () => {
                   <Typography variant="body2">Subtotal:</Typography>
                   <Typography variant="body2">{formatCurrency(calculateSubtotal())}</Typography>
                 </Box>
+                {discountAmount > 0 && (
+                  <Box display="flex" justifyContent="space-between" mb={1}>
+                    <Typography variant="body2" color="error">Discount:</Typography>
+                    <Typography variant="body2" color="error">-{formatCurrency(calculateDiscount())}</Typography>
+                  </Box>
+                )}
                 <Box display="flex" justifyContent="space-between" mb={1}>
                   <Typography variant="body2">
                     Tax ({(parseFloat(getSettingValue('TAXRATE', '0.08')) * 100).toFixed(1)}%):
@@ -747,6 +935,39 @@ const PurchaseOrderPOSPage: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+
+      {/* Payment Confirmation Dialog */}
+      <Dialog
+        open={openPaymentConfirmDialog}
+        onClose={loading ? undefined : handleCancelPayment}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown={loading}
+      >
+        <DialogTitle>Confirm Payment Processing</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            You are about to process payment for the following purchase order:
+          </DialogContentText>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="body2"><strong>PO Number:</strong> {purchaseOrderToPay?.poNumber}</Typography>
+            <Typography variant="body2"><strong>Supplier:</strong> {purchaseOrderToPay?.supplier?.name || 'N/A'}</Typography>
+            <Typography variant="body2"><strong>Total Amount:</strong> {formatCurrency(purchaseOrderToPay?.total || 0)}</Typography>
+            <Typography variant="body2"><strong>Payment Method:</strong> {paymentMethod}</Typography>
+          </Box>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            This will record a payment of {formatCurrency(purchaseOrderToPay?.total || 0)} for this purchase order.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelPayment} disabled={loading}>
+            Skip Payment
+          </Button>
+          <Button onClick={handleConfirmPayment} variant="contained" color="primary" disabled={loading}>
+            {loading ? 'Processing...' : 'Confirm & Process Payment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar */}
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>

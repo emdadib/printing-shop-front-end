@@ -33,11 +33,12 @@ const fetchPhotocopySetting = async (): Promise<boolean> => {
   }
 };
 
-export const usePhotocopySetting = () => {
+export const usePhotocopySetting = (enabled: boolean = true) => {
   const { data: isEnabled = true, isLoading: loading, error, refetch } = useQuery<boolean>(
     PHOTOCOPY_SETTING_KEY,
     fetchPhotocopySetting,
     {
+      enabled, // Only fetch when enabled (user is authenticated)
       staleTime: 10 * 60 * 1000, // Cache for 10 minutes (settings don't change often)
       cacheTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
       refetchOnWindowFocus: false, // Don't refetch on window focus

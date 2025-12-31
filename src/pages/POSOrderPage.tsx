@@ -191,14 +191,16 @@ const POSOrderPage: React.FC = () => {
         )
       );
     } else {
+      // Use product's actual base price, minimum 1
+      const unitPrice = Math.max(1, product.basePrice || 1);
       setCart([
         ...cart,
         {
           productId: product.id,
           product,
           quantity: 1,
-          unitPrice: product.basePrice,
-          total: product.basePrice,
+          unitPrice: unitPrice,
+          total: unitPrice,
         },
       ]);
     }
@@ -206,27 +208,24 @@ const POSOrderPage: React.FC = () => {
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
+    // Ensure quantity is at least 1
+    const validQuantity = Math.max(1, quantity);
     setCart(
       cart.map((item) =>
         item.productId === productId
-          ? { ...item, quantity, total: quantity * item.unitPrice }
+          ? { ...item, quantity: validQuantity, total: validQuantity * item.unitPrice }
           : item
       )
     );
   };
 
   const updateCartPrice = (productId: string, price: number) => {
-    if (price < 0) {
-      return;
-    }
+    // Ensure price is always an integer and at least 1 (minimum value)
+    const validPrice = Math.max(1, Math.floor(price));
     setCart(
       cart.map((item) =>
         item.productId === productId
-          ? { ...item, unitPrice: price, total: item.quantity * price }
+          ? { ...item, unitPrice: validPrice, total: item.quantity * validPrice }
           : item
       )
     );
@@ -511,78 +510,81 @@ const POSOrderPage: React.FC = () => {
               Order Summary
             </Typography>
             
-            {/* Customer Selection */}
-            <Controller
-              name="customerId"
-              control={control}
-              render={({ field }) => (
-                <Autocomplete
-                  options={[
-                    { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
-                    ...customers
-                  ]}
-                  getOptionLabel={(option) => {
-                    if (option.id === 'walk-in') {
-                      return '🚶 Walk-in Customer';
-                    }
-                    return `${option.firstName} ${option.lastName}${option.email ? ` (${option.email})` : ''}${option.phone ? ` - ${option.phone}` : ''}`;
-                  }}
-                  filterOptions={(options, { inputValue }) => {
-                    const searchTerm = inputValue.toLowerCase();
-                    return options.filter((option) => {
-                      if (option.id === 'walk-in') {
-                        return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
+            {/* Customer and Order Type in one row */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="customerId"
+                  control={control}
+                  render={({ field }) => (
+                    <Autocomplete
+                      options={[
+                        { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
+                        ...customers
+                      ]}
+                      getOptionLabel={(option) => {
+                        if (option.id === 'walk-in') {
+                          return '🚶 Walk-in Customer';
+                        }
+                        return `${option.firstName} ${option.lastName}${option.email ? ` (${option.email})` : ''}${option.phone ? ` - ${option.phone}` : ''}`;
+                      }}
+                      filterOptions={(options, { inputValue }) => {
+                        const searchTerm = inputValue.toLowerCase();
+                        return options.filter((option) => {
+                          if (option.id === 'walk-in') {
+                            return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
+                          }
+                          return (
+                            option.firstName.toLowerCase().includes(searchTerm) ||
+                            option.lastName.toLowerCase().includes(searchTerm) ||
+                            option.email.toLowerCase().includes(searchTerm) ||
+                            option.phone.toLowerCase().includes(searchTerm) ||
+                            `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
+                          );
+                        });
+                      }}
+                      value={
+                        field.value === 'walk-in'
+                          ? { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' }
+                          : customers.find((c) => c.id === field.value) || null
                       }
-                      return (
-                        option.firstName.toLowerCase().includes(searchTerm) ||
-                        option.lastName.toLowerCase().includes(searchTerm) ||
-                        option.email.toLowerCase().includes(searchTerm) ||
-                        option.phone.toLowerCase().includes(searchTerm) ||
-                        `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
-                      );
-                    });
-                  }}
-                  value={
-                    field.value === 'walk-in'
-                      ? { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' }
-                      : customers.find((c) => c.id === field.value) || null
-                  }
-                  onChange={(_, newValue) => {
-                    field.onChange(newValue ? newValue.id : 'walk-in');
-                  }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Customer"
-                      size="small"
-                      error={!!errors.customerId}
-                      helperText={errors.customerId?.message}
-                      placeholder="Search by name, email, or phone..."
+                      onChange={(_, newValue) => {
+                        field.onChange(newValue ? newValue.id : 'walk-in');
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Customer"
+                          size="small"
+                          error={!!errors.customerId}
+                          helperText={errors.customerId?.message}
+                          placeholder="Search by name, email, or phone..."
+                        />
+                      )}
+                      noOptionsText="No customers found"
                     />
                   )}
-                  sx={{ mb: 2 }}
-                  noOptionsText="No customers found"
                 />
-              )}
-            />
-
-            {/* Order Type */}
-            <Controller
-              name="type"
-              control={control}
-              render={({ field }) => (
-                <FormControl fullWidth size="small" sx={{ mb: 2 }} error={!!errors.type}>
-                  <InputLabel>Order Type</InputLabel>
-                  <Select {...field} label="Order Type">
-                    <MenuItem value="SALE">Sale</MenuItem>
-                    <MenuItem value="DIRECT_SALE">Direct Sale</MenuItem>
-                    <MenuItem value="CUSTOM_ORDER">Custom Order</MenuItem>
-                    <MenuItem value="RUSH_ORDER">Rush Order</MenuItem>
-                    <MenuItem value="REPRINT">Reprint</MenuItem>
-                  </Select>
-                </FormControl>
-              )}
-            />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="type"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth size="small" error={!!errors.type}>
+                      <InputLabel>Order Type</InputLabel>
+                      <Select {...field} label="Order Type">
+                        <MenuItem value="SALE">Sale</MenuItem>
+                        <MenuItem value="DIRECT_SALE">Direct Sale</MenuItem>
+                        <MenuItem value="CUSTOM_ORDER">Custom Order</MenuItem>
+                        <MenuItem value="RUSH_ORDER">Rush Order</MenuItem>
+                        <MenuItem value="REPRINT">Reprint</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+            </Grid>
           </Paper>
 
           {/* Cart Items */}
@@ -610,90 +612,120 @@ const POSOrderPage: React.FC = () => {
                       border: 1,
                       borderColor: 'divider',
                       display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'stretch',
-                      py: 1.5,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 1,
+                      py: 1,
+                      px: 1.5,
                     }}
                   >
-                    {/* Product Name and Delete Button */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                        {item.product.name}
-                      </Typography>
+                    {/* Product Name - Takes most space */}
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        mr: 1
+                      }}
+                    >
+                      {item.product.name}
+                    </Typography>
+
+                    {/* Quantity Controls */}
+                    <Box display="flex" alignItems="center" gap={0.5} sx={{ flexShrink: 0 }}>
                       <IconButton
                         size="small"
-                        color="error"
-                        onClick={() => removeFromCart(item.productId)}
+                        onClick={() => {
+                          const newQuantity = Math.max(1, item.quantity - 1);
+                          updateCartQuantity(item.productId, newQuantity);
+                        }}
+                        disabled={item.quantity <= 1}
+                        sx={{ p: 0.5 }}
                       >
-                        <Delete fontSize="small" />
+                        <Remove fontSize="small" />
+                      </IconButton>
+                      <TextField
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const qty = parseInt(e.target.value) || 1;
+                          updateCartQuantity(item.productId, qty);
+                        }}
+                        onBlur={(e) => {
+                          // Ensure minimum of 1 on blur
+                          const qty = parseInt(e.target.value) || 1;
+                          if (qty < 1) {
+                            updateCartQuantity(item.productId, 1);
+                          }
+                        }}
+                        inputProps={{ 
+                          min: 1,
+                          style: { textAlign: 'center', padding: '4px 8px', width: '40px' }
+                        }}
+                        size="small"
+                        sx={{ width: 60 }}
+                        variant="outlined"
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
+                        sx={{ p: 0.5 }}
+                      >
+                        <Add fontSize="small" />
                       </IconButton>
                     </Box>
 
-                    {/* Quantity, Price, and Total Row */}
-                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                      {/* Quantity Controls */}
-                      <Box display="flex" alignItems="center" gap={0.5}>
-                        <IconButton
-                          size="small"
-                          onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
-                          sx={{ p: 0.5 }}
-                        >
-                          <Remove fontSize="small" />
-                        </IconButton>
-                        <TextField
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const qty = parseInt(e.target.value) || 0;
-                            updateCartQuantity(item.productId, qty);
-                          }}
-                          inputProps={{ 
-                            min: 1,
-                            style: { textAlign: 'center', padding: '4px 8px', width: '50px' }
-                          }}
-                          size="small"
-                          sx={{ width: 70 }}
-                          variant="outlined"
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
-                          sx={{ p: 0.5 }}
-                        >
-                          <Add fontSize="small" />
-                        </IconButton>
-                      </Box>
+                    {/* Price Input */}
+                    <TextField
+                      type="number"
+                      value={item.unitPrice}
+                      onChange={(e) => {
+                        const price = parseInt(e.target.value) || 1;
+                        updateCartPrice(item.productId, price);
+                      }}
+                      inputProps={{ 
+                        min: 1,
+                        step: 1,
+                        style: { textAlign: 'right', padding: '4px 8px', width: '80px' }
+                      }}
+                      size="small"
+                      sx={{ width: 130, flexShrink: 0 }}
+                      variant="outlined"
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start" sx={{ fontSize: '0.7rem', mr: 0.5 }}>
+                            {getSettingValue('CURRENCY', 'USD')}
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
 
-                      {/* Price Input */}
-                      <TextField
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => {
-                          const price = parseFloat(e.target.value) || 0;
-                          updateCartPrice(item.productId, price);
-                        }}
-                        inputProps={{ 
-                          min: 0,
-                          step: 0.01,
-                          style: { textAlign: 'right', padding: '4px 8px' }
-                        }}
-                        size="small"
-                        sx={{ width: 110 }}
-                        variant="outlined"
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start" sx={{ fontSize: '0.75rem', mr: 0.5 }}>
-                              {getSettingValue('CURRENCY', 'USD')}
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
+                    {/* Total */}
+                    <Typography 
+                      variant="body2" 
+                      fontWeight="bold" 
+                      sx={{ 
+                        minWidth: 80, 
+                        textAlign: 'right',
+                        flexShrink: 0
+                      }}
+                    >
+                      {formatCurrency(item.total)}
+                    </Typography>
 
-                      {/* Total */}
-                      <Typography variant="body2" fontWeight="bold" sx={{ ml: 'auto', minWidth: 90, textAlign: 'right' }}>
-                        {formatCurrency(item.total)}
-                      </Typography>
-                    </Box>
+                    {/* Delete Button */}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeFromCart(item.productId)}
+                      sx={{ flexShrink: 0, ml: 0.5 }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
                   </ListItem>
                 ))}
               </List>
@@ -703,60 +735,59 @@ const POSOrderPage: React.FC = () => {
           {/* Order Totals & Payment */}
           <Paper sx={{ p: 2, borderRadius: 0, boxShadow: -1 }}>
             <form onSubmit={handleSubmit(onSubmit)}>
-              {/* Notes */}
-              <Controller
-                name="notes"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    size="small"
-                    label="Notes (Optional)"
-                    multiline
-                    rows={2}
-                    sx={{ mb: 2 }}
+              {/* Notes and Discount in one row - equal size */}
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="notes"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        size="small"
+                        label="Notes (Optional)"
+                      />
+                    )}
                   />
-                )}
-              />
-
-              {/* Discount Section */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Discount
-                </Typography>
-                <Grid container spacing={1}>
-                  <Grid item xs={6}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        value={discountType}
-                        onChange={(e) => setDiscountType(e.target.value as 'AMOUNT' | 'PERCENTAGE')}
-                        label="Type"
-                      >
-                        <MenuItem value="AMOUNT">Amount</MenuItem>
-                        <MenuItem value="PERCENTAGE">%</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="number"
-                      value={discountAmount}
-                      onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            {discountType === 'PERCENTAGE' ? '%' : getSettingValue('CURRENCY', 'USD')}
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </Grid>
                 </Grid>
-              </Box>
+                <Grid item xs={12} sm={6}>
+                  <Box>
+          
+                    <Grid container spacing={1}>
+                      <Grid item xs={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Discount Type</InputLabel>
+                          <Select
+                            value={discountType}
+                            onChange={(e) => setDiscountType(e.target.value as 'AMOUNT' | 'PERCENTAGE')}
+                            label="Discount Type"
+                          >
+                            <MenuItem value="AMOUNT">Amount</MenuItem>
+                            <MenuItem value="PERCENTAGE">%</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          value={discountAmount}
+                          onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                {discountType === 'PERCENTAGE' ? '%' : getSettingValue('CURRENCY', 'USD')}
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Grid>
+              </Grid>
 
               {/* Totals */}
               <Divider sx={{ my: 2 }} />
@@ -768,7 +799,7 @@ const POSOrderPage: React.FC = () => {
                 {discountAmount > 0 && (
                   <Box display="flex" justifyContent="space-between" mb={1}>
                     <Typography variant="body2" color="success.main">
-                      Discount:
+                      
                     </Typography>
                     <Typography variant="body2" color="success.main">
                       -{formatCurrency(calculateDiscount())}
@@ -783,32 +814,36 @@ const POSOrderPage: React.FC = () => {
                 </Box>
               </Box>
 
-              {/* Payment */}
-              <Box sx={{ mb: 2 }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Payment Amount"
-                  type="number"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start">{getSettingValue('CURRENCY', 'USD')}</InputAdornment>,
-                  }}
-                />
-              </Box>
-              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                <InputLabel>Payment Method</InputLabel>
-                <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} label="Payment Method">
-                  <MenuItem value="CASH">Cash</MenuItem>
-                  <MenuItem value="CARD">Card</MenuItem>
-                  <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
-                  <MenuItem value="CHECK">Check</MenuItem>
-                  <MenuItem value="DIGITAL_WALLET">Digital Wallet</MenuItem>
-                  <MenuItem value="BKASH">bKash</MenuItem>
-                  <MenuItem value="OTHER">Other</MenuItem>
-                </Select>
-              </FormControl>
+              {/* Payment Amount and Payment Method in one row - equal size */}
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Payment Amount"
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                    InputProps={{
+                      startAdornment: <InputAdornment position="start">{getSettingValue('CURRENCY', 'USD')}</InputAdornment>,
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} label="Payment Method">
+                      <MenuItem value="CASH">Cash</MenuItem>
+                      <MenuItem value="CARD">Card</MenuItem>
+                      <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
+                      <MenuItem value="CHECK">Check</MenuItem>
+                      <MenuItem value="DIGITAL_WALLET">Digital Wallet</MenuItem>
+                      <MenuItem value="BKASH">bKash</MenuItem>
+                      <MenuItem value="OTHER">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
 
               {/* Submit Button */}
               <Button

@@ -55,7 +55,7 @@ interface Expense {
   accountType: string;
   type: 'DEBIT' | 'CREDIT';
   amount: number;
-  description: string;
+  description?: string;
   reference?: string;
   expenseCategoryId?: string;
   expenseCategory?: {
@@ -100,7 +100,7 @@ const expenseSchema = yup.object({
   accountType: yup.string().required('Account type is required'),
   type: yup.string().required('Transaction type is required'),
   amount: yup.number().positive('Amount must be positive').required('Amount is required'),
-  description: yup.string().required('Description is required'),
+  description: yup.string().optional(),
   reference: yup.string().optional(),
   expenseCategoryId: yup.string().optional(),
   date: yup.string().required('Date is required')
@@ -719,7 +719,7 @@ const ExpensePage: React.FC = () => {
                   render={({ field }) => (
                     <TextField
                       {...field}
-                      label="Description *"
+                      label="Description"
                       fullWidth
                       error={!!expenseErrors.description}
                       helperText={expenseErrors.description?.message}

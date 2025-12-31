@@ -26,11 +26,12 @@ const fetchSettings = async (): Promise<Setting[]> => {
   }
 };
 
-export const useSettings = () => {
+export const useSettings = (enabled: boolean = true) => {
   const { data: settings = [], isLoading: loading, error, refetch } = useQuery<Setting[]>(
     SETTINGS_KEY,
     fetchSettings,
     {
+      enabled, // Only fetch when enabled (user is authenticated)
       staleTime: 10 * 60 * 1000, // Cache for 10 minutes (settings don't change often)
       cacheTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
       refetchOnWindowFocus: false, // Don't refetch on window focus
