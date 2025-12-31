@@ -106,13 +106,6 @@ interface Product {
   hasInventory: boolean;
 }
 
-interface PurchaseOrderStats {
-  totalOrders: number;
-  pendingOrders: number;
-  receivedOrders: number;
-  totalValue: number;
-}
-
 // Validation schema
 const purchaseOrderSchema = yup.object({
   supplierId: yup.string().required('Supplier is required'),
@@ -145,7 +138,6 @@ const PurchaseOrdersPage: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [stats, setStats] = useState<PurchaseOrderStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
@@ -250,24 +242,10 @@ const PurchaseOrdersPage: React.FC = () => {
     }
   };
 
-  const fetchStats = async () => {
-    try {
-      const response = await apiService.get('/purchase-orders/stats');
-      if (response.success && response.data) {
-        setStats(response.data);
-      } else {
-        setStats(response);
-      }
-    } catch (error) {
-      console.error('Error fetching purchase order stats:', error);
-    }
-  };
-
   useEffect(() => {
     fetchPurchaseOrders();
     fetchSuppliers();
     fetchProducts();
-    fetchStats();
   }, []);
 
   // Auto-open dialog when supplier is selected from suppliers page
@@ -520,7 +498,6 @@ const PurchaseOrdersPage: React.FC = () => {
       setDiscountAmount(0);
       setProcessPaymentOnCreate(false);
       fetchPurchaseOrders();
-      fetchStats();
     } catch (error) {
       console.error('Error creating purchase order:', error);
       showSnackbar('Failed to create purchase order', 'error');
@@ -557,7 +534,6 @@ const PurchaseOrdersPage: React.FC = () => {
       await apiService.put(`/purchase-orders/${editingOrder.id}`, updateData);
       handleCloseDialog();
       fetchPurchaseOrders();
-      fetchStats();
       showSnackbar('Purchase order updated successfully!', 'success');
     } catch (error) {
       console.error('Error updating purchase order:', error);
@@ -570,7 +546,6 @@ const PurchaseOrdersPage: React.FC = () => {
       try {
         await apiService.delete(`/purchase-orders/${orderId}`);
         fetchPurchaseOrders();
-        fetchStats();
         showSnackbar('Purchase order deleted successfully!', 'success');
       } catch (error) {
         console.error('Error deleting purchase order:', error);
@@ -585,7 +560,6 @@ const PurchaseOrdersPage: React.FC = () => {
       if (response && response.success) {
         showSnackbar(`Purchase order status updated to ${newStatus.replace('_', ' ')}`, 'success');
         fetchPurchaseOrders();
-        fetchStats();
       } else {
         showSnackbar('Failed to update purchase order status', 'error');
       }
