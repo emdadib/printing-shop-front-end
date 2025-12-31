@@ -554,10 +554,6 @@ const PurchaseOrdersPage: React.FC = () => {
     }
   };
 
-
-  //handleUpdateStatus
-    Update the purchase order status
-  */
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     try {
       const response = await apiService.patch(`/purchase-orders/${id}/status`, { status: newStatus });
