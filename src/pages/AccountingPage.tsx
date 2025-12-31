@@ -34,6 +34,7 @@ import {
   People as PeopleIcon,
   Business as BusinessIcon,
   TrendingDown as TrendingDownIcon,
+  TrendingUp as TrendingUpIcon,
   AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
@@ -786,6 +787,14 @@ const AccountingPage: React.FC = () => {
               onClick={handleOpenCalculateDialog}
             >
               Calculate Profit
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<TrendingUpIcon />}
+              onClick={() => handleOpenProfitDialog('deposit')}
+            >
+              Deposit Cash
             </Button>
             <Button
               variant="contained"

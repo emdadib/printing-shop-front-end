@@ -22,6 +22,8 @@ import {
   Snackbar,
   Badge,
   Autocomplete,
+  Checkbox,
+  FormControlLabel,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -203,7 +205,8 @@ const PurchaseOrderPOSPage: React.FC = () => {
         )
       );
     } else {
-      const unitPrice = product.baseCostPrice || product.basePrice || 0;
+      // Use product's actual cost price, fallback to base price, minimum 1
+      const unitPrice = Math.max(1, product.baseCostPrice || product.basePrice || 1);
       setCart([
         ...cart,
         {
@@ -219,27 +222,28 @@ const PurchaseOrderPOSPage: React.FC = () => {
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
+    // Ensure quantity is always an integer and at least 1
+    const qty = Math.max(1, Math.floor(quantity));
+    if (qty <= 0) {
       removeFromCart(productId);
       return;
     }
     setCart(
       cart.map((item) =>
         item.productId === productId
-          ? { ...item, quantity, total: quantity * item.unitPrice }
+          ? { ...item, quantity: qty, total: qty * item.unitPrice }
           : item
       )
     );
   };
 
   const updateCartPrice = (productId: string, price: number) => {
-    if (price < 0) {
-      return;
-    }
+    // Ensure price is always an integer and at least 1
+    const rate = Math.max(1, Math.floor(price));
     setCart(
       cart.map((item) =>
         item.productId === productId
-          ? { ...item, unitPrice: price, total: item.quantity * price }
+          ? { ...item, unitPrice: rate, total: item.quantity * rate }
           : item
       )
     );
@@ -397,6 +401,7 @@ const PurchaseOrderPOSPage: React.FC = () => {
           supplier: suppliers.find(s => s.id === data.supplierId)
         });
         setOpenPaymentConfirmDialog(true);
+        // Don't reset or navigate here - let the payment dialog handle it
       } else {
         showSnackbar('Purchase order created successfully!', 'success');
         
@@ -415,19 +420,6 @@ const PurchaseOrderPOSPage: React.FC = () => {
           navigate('/purchase-orders');
         }, 1000);
       }
-      
-      // Reset form and cart
-      setCart([]);
-      reset({
-        supplierId: selectedSupplierId || '',
-        expectedDelivery: undefined,
-        notes: '',
-      });
-      
-      // Navigate back after a short delay
-      setTimeout(() => {
-        navigate('/purchase-orders');
-      }, 1000);
     } catch (err: any) {
       console.error('Purchase order creation error:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Failed to create purchase order';
@@ -605,89 +597,83 @@ const PurchaseOrderPOSPage: React.FC = () => {
               Purchase Order Summary
             </Typography>
             
-            {/* Supplier Selection */}
-            <Controller
-              name="supplierId"
-              control={control}
-              render={({ field }) => (
-                <Autocomplete
-                  options={suppliers}
-                  getOptionLabel={(option) => `${option.name}${option.company ? ` - ${option.company}` : ''}${option.email ? ` (${option.email})` : ''}`}
-                  filterOptions={(options, { inputValue }) => {
-                    const searchTerm = inputValue.toLowerCase();
-                    return options.filter((option) =>
-                      option.name.toLowerCase().includes(searchTerm) ||
-                      option.company.toLowerCase().includes(searchTerm) ||
-                      option.email.toLowerCase().includes(searchTerm) ||
-                      option.phone.toLowerCase().includes(searchTerm)
-                    );
-                  }}
-                  value={suppliers.find((s) => s.id === field.value) || null}
-                  onChange={(_, newValue) => {
-                    field.onChange(newValue ? newValue.id : '');
-                  }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Supplier *"
-                      size="small"
-                      error={!!errors.supplierId}
-                      helperText={errors.supplierId?.message}
-                      placeholder="Search by name, company, or email..."
+            {/* Supplier, Purchase Mode, and Expected Delivery in one row */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              {/* Supplier Selection */}
+              <Grid item xs={12} sm={5}>
+                <Controller
+                  name="supplierId"
+                  control={control}
+                  render={({ field }) => (
+                    <Autocomplete
+                      options={suppliers}
+                      getOptionLabel={(option) => `${option.name}${option.company ? ` - ${option.company}` : ''}${option.email ? ` (${option.email})` : ''}`}
+                      filterOptions={(options, { inputValue }) => {
+                        const searchTerm = inputValue.toLowerCase();
+                        return options.filter((option) =>
+                          option.name.toLowerCase().includes(searchTerm) ||
+                          option.company.toLowerCase().includes(searchTerm) ||
+                          option.email.toLowerCase().includes(searchTerm) ||
+                          option.phone.toLowerCase().includes(searchTerm)
+                        );
+                      }}
+                      value={suppliers.find((s) => s.id === field.value) || null}
+                      onChange={(_, newValue) => {
+                        field.onChange(newValue ? newValue.id : '');
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Supplier *"
+                          size="small"
+                          error={!!errors.supplierId}
+                          helperText={errors.supplierId?.message}
+                          placeholder="Search supplier..."
+                        />
+                      )}
+                      noOptionsText="No suppliers found"
                     />
                   )}
-                  sx={{ mb: 2 }}
-                  noOptionsText="No suppliers found"
                 />
-              )}
-            />
+              </Grid>
 
-            {/* Purchase Mode */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Purchase Mode
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant={purchaseMode === 'FULL' ? 'contained' : 'outlined'}
-                  size="small"
-                  onClick={() => setPurchaseMode('FULL')}
-                  fullWidth
-                >
-                  Full PO
-                </Button>
-                <Button
-                  variant={purchaseMode === 'QUICK' ? 'contained' : 'outlined'}
-                  size="small"
-                  onClick={() => setPurchaseMode('QUICK')}
-                  fullWidth
-                >
-                  Quick
-                </Button>
-              </Box>
-              <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
-                {purchaseMode === 'FULL'
-                  ? 'Full workflow: Draft → Sent → Confirmed → Received'
-                  : 'Quick: Direct to Received'}
-              </Typography>
-            </Box>
-
-            {/* Expected Delivery */}
-            <Controller
-              name="expectedDelivery"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  size="small"
-                  label="Expected Delivery"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ mb: 2 }}
+              {/* Purchase Mode */}
+              <Grid item xs={12} sm={3}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={purchaseMode === 'QUICK'}
+                      onChange={(e) => setPurchaseMode(e.target.checked ? 'QUICK' : 'FULL')}
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                      {purchaseMode === 'QUICK' ? 'Quick Mode' : 'Full PO Mode'}
+                    </Typography>
+                  }
+                  sx={{ alignItems: 'center', mt: 0.5 }}
                 />
-              )}
-            />
+              </Grid>
+
+              {/* Expected Delivery */}
+              <Grid item xs={12} sm={4}>
+                <Controller
+                  name="expectedDelivery"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      size="small"
+                      label="Expected Delivery"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+            </Grid>
           </Paper>
 
           {/* Cart Items */}
@@ -715,90 +701,110 @@ const PurchaseOrderPOSPage: React.FC = () => {
                       border: 1,
                       borderColor: 'divider',
                       display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'stretch',
-                      py: 1.5,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 1,
+                      py: 1,
+                      px: 1.5,
                     }}
                   >
-                    {/* Product Name and Delete Button */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                        {item.product.name}
-                      </Typography>
+                    {/* Product Name - Takes most space */}
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontWeight: 'bold',
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        mr: 1
+                      }}
+                    >
+                      {item.product.name}
+                    </Typography>
+
+                    {/* Quantity Controls */}
+                    <Box display="flex" alignItems="center" gap={0.5} sx={{ flexShrink: 0 }}>
                       <IconButton
                         size="small"
-                        color="error"
-                        onClick={() => removeFromCart(item.productId)}
+                        onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
+                        sx={{ p: 0.5 }}
                       >
-                        <Delete fontSize="small" />
+                        <Remove fontSize="small" />
+                      </IconButton>
+                      <TextField
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const qty = parseInt(e.target.value) || 1;
+                          updateCartQuantity(item.productId, qty);
+                        }}
+                        inputProps={{ 
+                          min: 1,
+                          step: 1,
+                          style: { textAlign: 'center', padding: '4px 8px', width: '40px' }
+                        }}
+                        size="small"
+                        sx={{ width: 60 }}
+                        variant="outlined"
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
+                        sx={{ p: 0.5 }}
+                      >
+                        <Add fontSize="small" />
                       </IconButton>
                     </Box>
 
-                    {/* Quantity, Price, and Total Row */}
-                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                      {/* Quantity Controls */}
-                      <Box display="flex" alignItems="center" gap={0.5}>
-                        <IconButton
-                          size="small"
-                          onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
-                          sx={{ p: 0.5 }}
-                        >
-                          <Remove fontSize="small" />
-                        </IconButton>
-                        <TextField
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const qty = parseInt(e.target.value) || 0;
-                            updateCartQuantity(item.productId, qty);
-                          }}
-                          inputProps={{ 
-                            min: 1,
-                            style: { textAlign: 'center', padding: '4px 8px', width: '50px' }
-                          }}
-                          size="small"
-                          sx={{ width: 70 }}
-                          variant="outlined"
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
-                          sx={{ p: 0.5 }}
-                        >
-                          <Add fontSize="small" />
-                        </IconButton>
-                      </Box>
+                    {/* Price Input */}
+                    <TextField
+                      type="number"
+                      value={item.unitPrice}
+                      onChange={(e) => {
+                        const price = parseInt(e.target.value) || 1;
+                        updateCartPrice(item.productId, price);
+                      }}
+                      inputProps={{ 
+                        min: 1,
+                        step: 1,
+                        style: { textAlign: 'right', padding: '4px 8px', width: '80px' }
+                      }}
+                      size="small"
+                      sx={{ width: 130, flexShrink: 0 }}
+                      variant="outlined"
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start" sx={{ fontSize: '0.7rem', mr: 0.5 }}>
+                            {getSettingValue('CURRENCY', 'USD')}
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
 
-                      {/* Price Input */}
-                      <TextField
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => {
-                          const price = parseFloat(e.target.value) || 0;
-                          updateCartPrice(item.productId, price);
-                        }}
-                        inputProps={{ 
-                          min: 0,
-                          step: 0.01,
-                          style: { textAlign: 'right', padding: '4px 8px' }
-                        }}
-                        size="small"
-                        sx={{ width: 110 }}
-                        variant="outlined"
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start" sx={{ fontSize: '0.75rem', mr: 0.5 }}>
-                              {getSettingValue('CURRENCY', 'USD')}
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
+                    {/* Total */}
+                    <Typography 
+                      variant="body2" 
+                      fontWeight="bold" 
+                      sx={{ 
+                        minWidth: 80, 
+                        textAlign: 'right',
+                        flexShrink: 0
+                      }}
+                    >
+                      {formatCurrency(item.total)}
+                    </Typography>
 
-                      {/* Total */}
-                      <Typography variant="body2" fontWeight="bold" sx={{ ml: 'auto', minWidth: 90, textAlign: 'right' }}>
-                        {formatCurrency(item.total)}
-                      </Typography>
-                    </Box>
+                    {/* Delete Button */}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeFromCart(item.productId)}
+                      sx={{ flexShrink: 0, ml: 0.5 }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
                   </ListItem>
                 ))}
               </List>
@@ -808,68 +814,71 @@ const PurchaseOrderPOSPage: React.FC = () => {
           {/* Order Totals & Submit */}
           <Paper sx={{ p: 2, borderRadius: 0, boxShadow: -1 }}>
             <form onSubmit={handleSubmit(onSubmit)}>
-              {/* Notes */}
-              <Controller
-                name="notes"
-                control={control}
-                render={({ field }) => (
+              {/* Notes and Discount in one row - equal size */}
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="notes"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        size="small"
+                        label="Notes (Optional)"
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <TextField
-                    {...field}
                     fullWidth
                     size="small"
-                    label="Notes (Optional)"
-                    multiline
-                    rows={2}
-                    sx={{ mb: 2 }}
+                    label="Discount Amount"
+                    type="number"
+                    value={discountAmount}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0;
+                      setDiscountAmount(Math.max(0, value));
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          {getSettingValue('CURRENCY', 'USD')}
+                        </InputAdornment>
+                      ),
+                    }}
+                    inputProps={{ min: 0, step: 0.01 }}
                   />
-                )}
-              />
+                </Grid>
+              </Grid>
 
-              {/* Discount */}
-              <Box sx={{ mb: 2 }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Discount Amount"
-                  type="number"
-                  value={discountAmount}
-                  onChange={(e) => {
-                    const value = parseFloat(e.target.value) || 0;
-                    setDiscountAmount(Math.max(0, value));
-                  }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        {getSettingValue('CURRENCY', 'USD')}
-                      </InputAdornment>
-                    ),
-                  }}
-                  inputProps={{ min: 0, step: 0.01 }}
-                />
-              </Box>
-
-              {/* Process Payment Checkbox */}
-              <Box sx={{ mb: 2 }}>
-                <FormControl fullWidth>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <input
-                      type="checkbox"
-                      checked={processPayment}
-                      onChange={(e) => setProcessPayment(e.target.checked)}
-                      style={{ width: 18, height: 18 }}
-                    />
-                    <Typography variant="body2">
-                      Process payment with purchase
-                    </Typography>
-                  </Box>
-                  {processPayment && (
-                    <FormControl fullWidth sx={{ mt: 1 }}>
-                      <InputLabel size="small">Payment Method</InputLabel>
+              {/* Process Payment Checkbox and Payment Method in one row - equal size */}
+              <Grid container spacing={2} sx={{ mb: 2 }} alignItems="center">
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={processPayment}
+                        onChange={(e) => setProcessPayment(e.target.checked)}
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Process payment with purchase
+                      </Typography>
+                    }
+                  />
+                </Grid>
+                {processPayment && (
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Payment Method</InputLabel>
                       <Select
                         value={paymentMethod}
                         onChange={(e) => setPaymentMethod(e.target.value)}
                         label="Payment Method"
-                        size="small"
                       >
                         <MenuItem value="CASH">Cash</MenuItem>
                         <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
@@ -878,9 +887,9 @@ const PurchaseOrderPOSPage: React.FC = () => {
                         <MenuItem value="OTHER">Other</MenuItem>
                       </Select>
                     </FormControl>
-                  )}
-                </FormControl>
-              </Box>
+                  </Grid>
+                )}
+              </Grid>
 
               {/* Totals */}
               <Divider sx={{ my: 2 }} />
@@ -930,9 +939,10 @@ const PurchaseOrderPOSPage: React.FC = () => {
       {/* Payment Confirmation Dialog */}
       <Dialog
         open={openPaymentConfirmDialog}
-        onClose={handleCancelPayment}
+        onClose={loading ? undefined : handleCancelPayment}
         maxWidth="sm"
         fullWidth
+        disableEscapeKeyDown={loading}
       >
         <DialogTitle>Confirm Payment Processing</DialogTitle>
         <DialogContent>

@@ -20,7 +20,6 @@ import {
   People,
   Inventory,
   AttachMoney,
-  Schedule,
   Warning,
   ContentCopy,
   AccountBalance
@@ -265,42 +264,6 @@ const DashboardPage: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" gutterBottom>
-                    Pending Orders
-                  </Typography>
-                  <Typography variant="h4">
-                    {stats?.pendingOrders || 0}
-                  </Typography>
-                </Box>
-                <Schedule color="warning" sx={{ fontSize: 40 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" gutterBottom>
-                    Low Stock Items
-                  </Typography>
-                  <Typography variant="h4">
-                    {stats?.lowStockCount || 0}
-                  </Typography>
-                </Box>
-                <Warning color="error" sx={{ fontSize: 40 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
           <Card 
             sx={{ 
               cursor: 'pointer',
@@ -330,6 +293,24 @@ const DashboardPage: React.FC = () => {
                   )}
                 </Box>
                 <AccountBalance color={cashBalance !== null && cashBalance >= 0 ? 'success' : 'error'} sx={{ fontSize: 40 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
+                    Low Stock Items
+                  </Typography>
+                  <Typography variant="h4">
+                    {stats?.lowStockCount || 0}
+                  </Typography>
+                </Box>
+                <Warning color="error" sx={{ fontSize: 40 }} />
               </Box>
             </CardContent>
           </Card>
