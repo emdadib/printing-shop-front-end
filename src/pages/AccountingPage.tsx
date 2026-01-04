@@ -150,6 +150,12 @@ const AccountingPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   
+  // Company ledger filter state
+  const [companyAccountTypeFilter, setCompanyAccountTypeFilter] = useState<string>('');
+  const [companyTransactionTypeFilter, setCompanyTransactionTypeFilter] = useState<string>('');
+  const [companyStartDate, setCompanyStartDate] = useState<string>('');
+  const [companyEndDate, setCompanyEndDate] = useState<string>('');
+  
   // Profit management state
   const [profitSummary, setProfitSummary] = useState<ProfitSummary | null>(null);
   const [openProfitDialog, setOpenProfitDialog] = useState(false);
@@ -288,7 +294,24 @@ const AccountingPage: React.FC = () => {
   const fetchCompanyLedger = async () => {
     try {
       setLoading(true);
-      const response = await apiService.get(`/accounting/company/ledger?page=${page + 1}&limit=${rowsPerPage}`);
+      const params = new URLSearchParams();
+      params.append('page', String(page + 1));
+      params.append('limit', String(rowsPerPage));
+      
+      if (companyAccountTypeFilter) {
+        params.append('accountType', companyAccountTypeFilter);
+      }
+      if (companyTransactionTypeFilter) {
+        params.append('transactionType', companyTransactionTypeFilter);
+      }
+      if (companyStartDate) {
+        params.append('startDate', companyStartDate);
+      }
+      if (companyEndDate) {
+        params.append('endDate', companyEndDate);
+      }
+      
+      const response = await apiService.get(`/accounting/company/ledger?${params.toString()}`);
       if (response.success && response.data) {
         setCompanyLedger(response.data);
       } else {
@@ -356,7 +379,7 @@ const AccountingPage: React.FC = () => {
     if (activeTab === 2) {
       fetchCompanyLedger();
     }
-  }, [activeTab, page, rowsPerPage]);
+  }, [activeTab, page, rowsPerPage, companyAccountTypeFilter, companyTransactionTypeFilter, companyStartDate, companyEndDate]);
 
   // Handlers
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -927,7 +950,7 @@ const AccountingPage: React.FC = () => {
         <Grid item xs={12} sm={6}>
           <Typography variant="h6">Company General Ledger</Typography>
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={6} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -937,6 +960,97 @@ const AccountingPage: React.FC = () => {
           </Button>
         </Grid>
       </Grid>
+
+      {/* Filters */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Account Type</InputLabel>
+              <Select
+                value={companyAccountTypeFilter}
+                label="Account Type"
+                onChange={(e) => {
+                  setCompanyAccountTypeFilter(e.target.value);
+                  setPage(0); // Reset to first page when filter changes
+                }}
+              >
+                <MenuItem value="">All Accounts</MenuItem>
+                <MenuItem value="CASH">Cash</MenuItem>
+                <MenuItem value="BANK">Bank</MenuItem>
+                <MenuItem value="SALES">Sales</MenuItem>
+                <MenuItem value="EXPENSES">Expenses</MenuItem>
+                <MenuItem value="PURCHASES">Purchases</MenuItem>
+                <MenuItem value="EQUITY">Equity</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Transaction Type</InputLabel>
+              <Select
+                value={companyTransactionTypeFilter}
+                label="Transaction Type"
+                onChange={(e) => {
+                  setCompanyTransactionTypeFilter(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <MenuItem value="">All Types</MenuItem>
+                <MenuItem value="DEBIT">Debit</MenuItem>
+                <MenuItem value="CREDIT">Credit</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Start Date"
+              type="date"
+              value={companyStartDate}
+              onChange={(e) => {
+                setCompanyStartDate(e.target.value);
+                setPage(0);
+              }}
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField
+              fullWidth
+              size="small"
+              label="End Date"
+              type="date"
+              value={companyEndDate}
+              onChange={(e) => {
+                setCompanyEndDate(e.target.value);
+                setPage(0);
+              }}
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => {
+                setCompanyAccountTypeFilter('');
+                setCompanyTransactionTypeFilter('');
+                setCompanyStartDate('');
+                setCompanyEndDate('');
+                setPage(0);
+              }}
+            >
+              Clear Filters
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
 
       {companyLedger && (
         <Box>
@@ -1045,21 +1159,21 @@ const AccountingPage: React.FC = () => {
               </TableHead>
               <TableBody>
                 {companyLedger.transactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
-                    <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{transaction.accountType || transaction.referenceType || 'General'}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={transaction.type}
-                        color={transaction.type === 'DEBIT' ? 'error' : 'success'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>{transaction.description}</TableCell>
-                    <TableCell>{transaction.reference || '-'}</TableCell>
-                    <TableCell align="right">{formatCurrency(typeof transaction.amount === 'number' ? transaction.amount : parseFloat(transaction.amount) || 0)}</TableCell>
-                  </TableRow>
-                ))}
+                    <TableRow key={transaction.id}>
+                      <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                      <TableCell>{transaction.accountType || transaction.referenceType || 'General'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={transaction.type}
+                          color={transaction.type === 'DEBIT' ? 'error' : 'success'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>{transaction.description}</TableCell>
+                      <TableCell>{transaction.reference || '-'}</TableCell>
+                      <TableCell align="right">{formatCurrency(typeof transaction.amount === 'number' ? transaction.amount : parseFloat(transaction.amount) || 0)}</TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
             <TablePagination
