@@ -35,13 +35,11 @@ import {
   Delete as DeleteIcon,
   CheckCircle as CheckIcon,
   Cancel as CancelIcon,
-  AttachMoney as MoneyIcon,
   AccountBalanceWallet as WalletIcon,
   TrendingUp as TrendingUpIcon,
   CalendarMonth as CalendarIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { salaryApi, Salary, CreateSalaryData, UpdateSalaryData } from '@/services/salaryApi';
 import { salaryAdvanceApi, SalaryAdvance, CreateSalaryAdvanceData } from '@/services/salaryAdvanceApi';
 import { improvedSalaryApi, EmployeeSalaryProfile } from '@/services/improvedSalaryApi';
 import { userApi, User } from '@/services/userApi';
@@ -72,20 +70,8 @@ const CombinedSalaryPage: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [salaryDialogOpen, setSalaryDialogOpen] = useState(false);
   const [advanceDialogOpen, setAdvanceDialogOpen] = useState(false);
-  const [editingSalary, setEditingSalary] = useState<Salary | null>(null);
   const [_editingAdvance, _setEditingAdvance] = useState<SalaryAdvance | null>(null);
-  const [salaryForm, setSalaryForm] = useState({
-    userId: '',
-    amount: '',
-    month: selectedMonth,
-    year: selectedYear,
-    notes: '',
-    deductions: '',
-    bonuses: '',
-    advances: ''
-  });
   const [advanceForm, setAdvanceForm] = useState({
     userId: '',
     amount: '',
@@ -114,14 +100,6 @@ const CombinedSalaryPage: React.FC = () => {
   // Fetch users
   const { data: usersResponse, isLoading: usersLoading } = useQuery('users', () => userApi.getAllUsers());
   const users = usersResponse?.data || [];
-
-  // Fetch salaries
-  const { data: salariesResponse, isLoading: salariesLoading } = useQuery(
-    ['salaries', selectedMonth, selectedYear],
-    () => salaryApi.getAllSalaries({ month: selectedMonth, year: selectedYear })
-  );
-  
-  const salaries = salariesResponse?.data || [];
 
   // Fetch salary advances
   const { data: advancesResponse, isLoading: advancesLoading } = useQuery(
@@ -157,57 +135,10 @@ const CombinedSalaryPage: React.FC = () => {
   
   const monthlySummary = monthlySummaryResponse?.data;
 
-  // Fetch salary summary
-  const { data: salarySummaryResponse } = useQuery(
-    ['salary-summary', selectedMonth, selectedYear],
-    () => salaryApi.getSalarySummary({ month: selectedMonth, year: selectedYear }),
-    {
-      enabled: selectedMonth > 0 && selectedYear > 0 // Only run when we have valid values
-    }
-  );
-  
-  const salarySummary = salarySummaryResponse?.data || { totalSalaries: 0, totalAmount: 0 };
-
   // Mutations
-  const createSalaryMutation = useMutation(salaryApi.createSalary, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
-      queryClient.invalidateQueries(['salary-summary', selectedMonth, selectedYear]);
-      setSalaryDialogOpen(false);
-      resetSalaryForm();
-    }
-  });
-
-  const updateSalaryMutation = useMutation(
-    ({ id, data }: { id: string; data: UpdateSalaryData }) => salaryApi.updateSalary(id, data),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
-        queryClient.invalidateQueries(['salary-summary', selectedMonth, selectedYear]);
-        setSalaryDialogOpen(false);
-        resetSalaryForm();
-      }
-    }
-  );
-
-  const paySalaryMutation = useMutation(salaryApi.markSalaryAsPaid, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
-      queryClient.invalidateQueries(['salary-summary', selectedMonth, selectedYear]);
-    }
-  });
-
-  const deleteSalaryMutation = useMutation(salaryApi.deleteSalary, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
-      queryClient.invalidateQueries(['salary-summary', selectedMonth, selectedYear]);
-    }
-  });
-
   const createAdvanceMutation = useMutation(salaryAdvanceApi.createSalaryAdvance, {
     onSuccess: () => {
       queryClient.invalidateQueries('salary-advances');
-      queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
       setAdvanceDialogOpen(false);
       resetAdvanceForm();
     }
@@ -216,14 +147,12 @@ const CombinedSalaryPage: React.FC = () => {
   const approveAdvanceMutation = useMutation(salaryAdvanceApi.approveSalaryAdvance, {
     onSuccess: () => {
       queryClient.invalidateQueries('salary-advances');
-      queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
     }
   });
 
   const payAdvanceMutation = useMutation(salaryAdvanceApi.paySalaryAdvance, {
     onSuccess: () => {
       queryClient.invalidateQueries('salary-advances');
-      queryClient.invalidateQueries(['salaries', selectedMonth, selectedYear]);
     }
   });
 
@@ -272,20 +201,6 @@ const CombinedSalaryPage: React.FC = () => {
       }
     }
   );
-
-  const resetSalaryForm = () => {
-    setSalaryForm({
-      userId: '',
-      amount: '',
-      month: selectedMonth,
-      year: selectedYear,
-      notes: '',
-      deductions: '',
-      bonuses: '',
-      advances: ''
-    });
-    setEditingSalary(null);
-  };
 
   const resetAdvanceForm = () => {
     setAdvanceForm({
@@ -384,25 +299,6 @@ const CombinedSalaryPage: React.FC = () => {
     }
   };
 
-  const handleSalarySubmit = () => {
-    const salaryData: CreateSalaryData = {
-      userId: salaryForm.userId,
-      amount: parseFloat(salaryForm.amount),
-      month: salaryForm.month,
-      year: salaryForm.year,
-      notes: salaryForm.notes,
-      deductions: salaryForm.deductions ? parseFloat(salaryForm.deductions) : undefined,
-      bonuses: salaryForm.bonuses ? parseFloat(salaryForm.bonuses) : undefined,
-      // advances: salaryForm.advances ? parseFloat(salaryForm.advances) : undefined
-    };
-
-    if (editingSalary) {
-      updateSalaryMutation.mutate({ id: editingSalary.id, data: salaryData });
-    } else {
-      createSalaryMutation.mutate(salaryData);
-    }
-  };
-
   const handleAdvanceSubmit = () => {
     const advanceData: CreateSalaryAdvanceData = {
       userId: advanceForm.userId,
@@ -412,31 +308,6 @@ const CombinedSalaryPage: React.FC = () => {
     };
 
     createAdvanceMutation.mutate(advanceData);
-  };
-
-  const handleEditSalary = (salary: Salary) => {
-    setEditingSalary(salary);
-    setSalaryForm({
-      userId: salary.userId,
-      amount: salary.amount.toString(),
-      month: salary.month,
-      year: salary.year,
-      notes: salary.notes || '',
-      deductions: salary.deductions?.toString() || '',
-      bonuses: salary.bonuses?.toString() || '',
-      advances: salary.advances?.toString() || ''
-    });
-    setSalaryDialogOpen(true);
-  };
-
-  const handlePaySalary = (salaryId: string) => {
-    paySalaryMutation.mutate(salaryId);
-  };
-
-  const handleDeleteSalary = (salaryId: string) => {
-    if (window.confirm('Are you sure you want to delete this salary record?')) {
-      deleteSalaryMutation.mutate(salaryId);
-    }
   };
 
   const handleApproveAdvance = (advanceId: string) => {
@@ -468,14 +339,6 @@ const CombinedSalaryPage: React.FC = () => {
     }
   };
 
-  const calculateNetAmount = (salary: Salary) => {
-    const amount = parseFloat(salary.amount.toString());
-    const deductions = salary.deductions ? parseFloat(salary.deductions.toString()) : 0;
-    const bonuses = salary.bonuses ? parseFloat(salary.bonuses.toString()) : 0;
-    const advances = salary.advances ? parseFloat(salary.advances.toString()) : 0;
-    return amount - deductions + bonuses - advances;
-  };
-
   const getUserName = (userId: string) => {
     const user = Array.isArray(users) ? users.find(u => u.id === userId) : null;
     return user ? `${user.firstName} ${user.lastName}` : 'Unknown User';
@@ -493,7 +356,7 @@ const CombinedSalaryPage: React.FC = () => {
   //   return Array.isArray(advances) ? advances.filter(advance => advance.status === 'PAID') : [];
   // };
 
-  if (usersLoading || salariesLoading || advancesLoading) {
+  if (usersLoading || advancesLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <CircularProgress />
@@ -509,31 +372,7 @@ const CombinedSalaryPage: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Total Salaries
-              </Typography>
-              <Typography variant="h5">
-                {salarySummary?.totalSalaries || 0}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Total Amount
-              </Typography>
-              <Typography variant="h5">
-                ${salarySummary?.totalAmount || 0}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -545,7 +384,7 @@ const CombinedSalaryPage: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -553,6 +392,18 @@ const CombinedSalaryPage: React.FC = () => {
               </Typography>
               <Typography variant="h5" color="info.main">
                 {getApprovedAdvances().length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Total Advances
+              </Typography>
+              <Typography variant="h5" color="primary.main">
+                {Array.isArray(advances) ? advances.length : 0}
               </Typography>
             </CardContent>
           </Card>
@@ -593,16 +444,6 @@ const CombinedSalaryPage: React.FC = () => {
           </Select>
         </FormControl>
         <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            resetSalaryForm();
-            setSalaryDialogOpen(true);
-          }}
-        >
-          Add Salary
-        </Button>
-        <Button
           variant="outlined"
           startIcon={<WalletIcon />}
           onClick={() => {
@@ -617,90 +458,12 @@ const CombinedSalaryPage: React.FC = () => {
       {/* Tabs */}
       <Paper sx={{ width: '100%' }}>
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="salary management tabs">
-          <Tab label="Salary Management" icon={<MoneyIcon />} />
           <Tab label="Salary Advances" icon={<WalletIcon />} />
           <Tab label="Improved Salary" icon={<TrendingUpIcon />} />
         </Tabs>
 
-        {/* Salary Management Tab */}
-        <TabPanel value={tabValue} index={0}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Employee</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Deductions</TableCell>
-                  <TableCell>Bonuses</TableCell>
-                  <TableCell>Advances</TableCell>
-                  <TableCell>Net Amount</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {Array.isArray(salaries) && salaries.map((salary) => (
-                  <TableRow key={salary.id}>
-                    <TableCell>{getUserName(salary.userId)}</TableCell>
-                    <TableCell>${salary.amount}</TableCell>
-                    <TableCell>${salary.deductions || 0}</TableCell>
-                    <TableCell>${salary.bonuses || 0}</TableCell>
-                    <TableCell>${salary.advances || 0}</TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        color={calculateNetAmount(salary) >= 0 ? 'success.main' : 'error.main'}
-                        fontWeight="bold"
-                      >
-                        ${calculateNetAmount(salary).toFixed(2)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={salary.status}
-                        color={getStatusColor(salary.status) as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditSalary(salary)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      {salary.status === 'APPROVED' && (
-                        <Tooltip title="Mark as Paid">
-                          <IconButton
-                            size="small"
-                            onClick={() => handlePaySalary(salary.id)}
-                            color="success"
-                          >
-                            <CheckIcon />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteSalary(salary.id)}
-                          color="error"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
-
         {/* Salary Advances Tab */}
-        <TabPanel value={tabValue} index={1}>
+        <TabPanel value={tabValue} index={0}>
           <TableContainer>
             <Table>
               <TableHead>
@@ -781,7 +544,7 @@ const CombinedSalaryPage: React.FC = () => {
         </TabPanel>
 
         {/* Improved Salary Tab */}
-        <TabPanel value={tabValue} index={2}>
+        <TabPanel value={tabValue} index={1}>
           {/* Action Buttons */}
           <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
             <Button
@@ -1033,80 +796,6 @@ const CombinedSalaryPage: React.FC = () => {
           )}
         </TabPanel>
       </Paper>
-
-      {/* Salary Dialog */}
-      <Dialog open={salaryDialogOpen} onClose={() => setSalaryDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {editingSalary ? 'Edit Salary' : 'Add New Salary'}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Employee</InputLabel>
-                <Select
-                  value={salaryForm.userId}
-                  label="Employee"
-                  onChange={(e) => setSalaryForm({ ...salaryForm, userId: e.target.value })}
-                >
-                  {Array.isArray(users) && users.map((user) => (
-                    <MenuItem key={user.id} value={user.id}>
-                      {user.firstName} {user.lastName}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Amount"
-                type="number"
-                value={salaryForm.amount}
-                onChange={(e) => setSalaryForm({ ...salaryForm, amount: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Deductions"
-                type="number"
-                value={salaryForm.deductions}
-                onChange={(e) => setSalaryForm({ ...salaryForm, deductions: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Bonuses"
-                type="number"
-                value={salaryForm.bonuses}
-                onChange={(e) => setSalaryForm({ ...salaryForm, bonuses: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Notes"
-                multiline
-                rows={3}
-                value={salaryForm.notes}
-                onChange={(e) => setSalaryForm({ ...salaryForm, notes: e.target.value })}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSalaryDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleSalarySubmit}
-            variant="contained"
-            disabled={createSalaryMutation.isLoading || updateSalaryMutation.isLoading}
-          >
-            {editingSalary ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Advance Dialog */}
       <Dialog open={advanceDialogOpen} onClose={() => setAdvanceDialogOpen(false)} maxWidth="md" fullWidth>
