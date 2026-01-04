@@ -196,10 +196,27 @@ const CustomersPage: React.FC = () => {
 
   const onSubmit = async (data: any) => {
     try {
+      // Helper function to convert empty strings to null for optional fields
+      const toNullIfEmpty = (value: any): any => {
+        if (typeof value === 'string' && value.trim() === '') {
+          return null;
+        }
+        return value;
+      };
+
+      // Prepare submit data - convert empty email to null
+      const submitData = {
+        firstName: data.firstName?.trim() || '',
+        lastName: data.lastName?.trim() || '',
+        email: toNullIfEmpty(data.email),
+        phone: data.phone?.trim() || '',
+        address: data.address?.trim() || null
+      };
+
       if (editingCustomer) {
-        await apiService.put(`/customers/${editingCustomer.id}`, data);
+        await apiService.put(`/customers/${editingCustomer.id}`, submitData);
       } else {
-        await apiService.post('/customers', data);
+        await apiService.post('/customers', submitData);
       }
       fetchCustomers();
       handleCloseDialog();
