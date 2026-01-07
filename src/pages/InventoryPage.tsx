@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -103,18 +103,15 @@ const InventoryPage: React.FC = () => {
     }
   });
 
-  useEffect(() => {
-    fetchInventory();
-    fetchCategories();
-  }, []);
-
-  const fetchInventory = async () => {
+  const fetchInventory = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (filterCategory) params.append('category', filterCategory);
       if (showLowStockOnly) params.append('lowStock', 'true');
+      // Increase limit to fetch more results (or all if needed)
+      params.append('limit', '100');
 
       const response = await apiService.get(`/inventory?${params.toString()}`);
       console.log('Inventory response:', response);
@@ -133,7 +130,20 @@ const InventoryPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, filterCategory, showLowStockOnly]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  // Fetch inventory when filters change (with debounce for search)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchInventory();
+    }, searchTerm ? 300 : 0); // Debounce search by 300ms
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, filterCategory, showLowStockOnly, fetchInventory]);
 
   const fetchCategories = async () => {
     try {
@@ -199,14 +209,11 @@ const InventoryPage: React.FC = () => {
     return 'In Stock';
   };
 
-  const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.product.sku.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !filterCategory || item.product.category?.id === filterCategory;
-    const matchesLowStock = !showLowStockOnly || item.isLowStock || item.isOutOfStock;
-    
-    return matchesSearch && matchesCategory && matchesLowStock;
-  });
+  // No need for client-side filtering since API already handles it
+  // Only apply low stock filter if needed (API might not handle it correctly)
+  const filteredInventory = showLowStockOnly 
+    ? inventory.filter(item => item.isLowStock || item.isOutOfStock)
+    : inventory;
 
   if (loading) {
     return (
