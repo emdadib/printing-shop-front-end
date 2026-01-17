@@ -13,7 +13,7 @@
   status = 200
 
 [context.production.environment]
-  VITE_API_URL = "https://printing-shop-backend-fjm2hbzd2a-as.a.run.app/api"
+  VITE_API_URL = "https://priting-shop-back-end.onrender.com"
 
 [context.deploy-preview.environment]
-  VITE_API_URL = "https://printing-shop-backend-fjm2hbzd2a-as.a.run.app/api"
+  VITE_API_URL = "https://priting-shop-back-end.onrender.com"
