@@ -29,6 +29,7 @@ import SettingsPage from '@/pages/SettingsPage'
 import UserProfilePage from '@/pages/UserProfilePage'
 import PhotocopyPage from '@/pages/PhotocopyPage'
 import CombinedSalaryPage from '@/pages/CombinedSalaryPage'
+import AttendancePage from '@/pages/AttendancePage'
 
 import { useAuth } from '@/hooks/useAuth'
 import { usePhotocopySetting } from '@/hooks/usePhotocopySetting'
@@ -126,6 +127,7 @@ const App: React.FC = () => {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<UserProfilePage />} />
                 {photocopyEnabled && <Route path="/photocopy" element={<PhotocopyPage />} />}
+                <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </Layout>

@@ -26,7 +26,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  InputAdornment
+  InputAdornment,
+  FormHelperText
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -108,6 +109,7 @@ const supplierSchema = yup.object({
 
 const openingBalanceSchema = yup.object({
   amount: yup.number().required('Amount is required').positive('Amount must be positive'),
+  direction: yup.string().oneOf(['STORE_OWES_SUPPLIER', 'SUPPLIER_OWES_STORE']).required('Balance type is required'),
   date: yup.string().required('Date is required'),
   notes: yup.string()
 });
@@ -173,6 +175,7 @@ const SuppliersPage: React.FC = () => {
     resolver: yupResolver(openingBalanceSchema),
     defaultValues: {
       amount: 0,
+      direction: 'STORE_OWES_SUPPLIER',
       date: new Date().toISOString().split('T')[0],
       notes: ''
     }
@@ -416,6 +419,7 @@ const SuppliersPage: React.FC = () => {
     setSelectedSupplierForBalance(supplier);
     resetBalance({
       amount: 0,
+      direction: 'STORE_OWES_SUPPLIER',
       date: new Date().toISOString().split('T')[0],
       notes: ''
     });
@@ -432,12 +436,21 @@ const SuppliersPage: React.FC = () => {
     if (!selectedSupplierForBalance) return;
 
     try {
-      // Supplier always owes store (receivable) - always DEBIT
+      const direction = data.direction as 'STORE_OWES_SUPPLIER' | 'SUPPLIER_OWES_STORE';
+      // Supplier ledger semantics (payables):
+      // - Store owes supplier => CREDIT (increases payable)
+      // - Supplier owes store / supplier credit => DEBIT (decreases payable; can go negative)
+      const type = direction === 'STORE_OWES_SUPPLIER' ? 'CREDIT' : 'DEBIT';
+      const description =
+        direction === 'STORE_OWES_SUPPLIER'
+          ? 'Opening Balance - Store owes supplier'
+          : 'Opening Balance - Supplier owes store';
+
       await apiService.post('/accounting/suppliers/transactions', {
         supplierId: selectedSupplierForBalance.id,
-        type: 'DEBIT',
+        type,
         amount: data.amount,
-        description: 'Opening Balance - Supplier owes store',
+        description,
         reference: 'OPENING_BALANCE',
         referenceType: 'ADJUSTMENT',
         date: data.date,
@@ -1036,10 +1049,28 @@ const SuppliersPage: React.FC = () => {
           <DialogContent>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                <strong>Opening Balance:</strong> Amount the supplier owes to the store (Receivable)
+                <strong>Opening Balance:</strong> Choose whether the store owes the supplier (Payable) or the supplier owes the store (Supplier credit).
               </Typography>
             </Alert>
             <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Controller
+                  name="direction"
+                  control={balanceControl}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!balanceErrors.direction}>
+                      <InputLabel>Balance Type *</InputLabel>
+                      <Select {...field} label="Balance Type *">
+                        <MenuItem value="STORE_OWES_SUPPLIER">Store owes supplier (Payable)</MenuItem>
+                        <MenuItem value="SUPPLIER_OWES_STORE">Supplier owes store (Supplier credit)</MenuItem>
+                      </Select>
+                      {balanceErrors.direction?.message ? (
+                        <FormHelperText>{String(balanceErrors.direction?.message)}</FormHelperText>
+                      ) : null}
+                    </FormControl>
+                  )}
+                />
+              </Grid>
               <Grid item xs={12}>
                 <Controller
                   name="amount"
