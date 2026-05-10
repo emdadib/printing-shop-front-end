@@ -35,6 +35,7 @@ import {
   AccountBalance,
   AdminPanelSettings,
   Receipt,
+  AccessTime,
 } from '@mui/icons-material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
@@ -68,6 +69,7 @@ const getMenuIcon = (iconName: string) => {
     'Person': <People />,
     'AdminPanelSettings': <AdminPanelSettings />,
     'Receipt': <Receipt />,
+    'AccessTime': <AccessTime />,
   }
   return iconMap[iconName] || <Dashboard />
 }

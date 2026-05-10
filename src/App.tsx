@@ -13,6 +13,7 @@ import ProductsPage from '@/pages/ProductsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
 import InventoryPage from '@/pages/InventoryPage'
 import OrdersPage from '@/pages/OrdersPage'
+import DueAmountOrdersPage from '@/pages/DueAmountOrdersPage'
 import POSOrderPage from '@/pages/POSOrderPage'
 import CustomersPage from '@/pages/CustomersPage'
 import SuppliersPage from '@/pages/SuppliersPage'
@@ -29,6 +30,7 @@ import SettingsPage from '@/pages/SettingsPage'
 import UserProfilePage from '@/pages/UserProfilePage'
 import PhotocopyPage from '@/pages/PhotocopyPage'
 import CombinedSalaryPage from '@/pages/CombinedSalaryPage'
+import AttendancePage from '@/pages/AttendancePage'
 
 import { useAuth } from '@/hooks/useAuth'
 import { usePhotocopySetting } from '@/hooks/usePhotocopySetting'
@@ -111,6 +113,7 @@ const App: React.FC = () => {
                 <Route path="/categories" element={<CategoriesPage />} />
                 <Route path="/inventory" element={<InventoryPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/orders/due-amount" element={<DueAmountOrdersPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/suppliers" element={<SuppliersPage />} />
                 <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
@@ -126,6 +129,7 @@ const App: React.FC = () => {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<UserProfilePage />} />
                 {photocopyEnabled && <Route path="/photocopy" element={<PhotocopyPage />} />}
+                <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </Layout>

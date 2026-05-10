@@ -76,7 +76,10 @@ interface AccountingSummary {
   supplierBalances: any[];
   companyBalances: any[];
   totalReceivables: number;
+  totalCustomerCredits?: number;
+  netReceivables?: number;
   totalPayables: number;
+  totalPayablesFromSupplierLedger?: number;
   netPosition: number;
 }
 
@@ -1207,7 +1210,7 @@ const AccountingPage: React.FC = () => {
             <Card>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
-                  Total Receivables
+                  Receivables (Customers owe)
                 </Typography>
                 <Typography variant="h4" color="success.main">
                   {formatCurrency(typeof summary.totalReceivables === 'number' ? summary.totalReceivables : parseFloat(summary.totalReceivables) || 0)}
@@ -1219,11 +1222,22 @@ const AccountingPage: React.FC = () => {
             <Card>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
-                  Total Payables
+                  Payables (We owe suppliers)
                 </Typography>
                 <Typography variant="h4" color="error.main">
-                  {formatCurrency(typeof summary.totalPayables === 'number' ? summary.totalPayables : parseFloat(summary.totalPayables) || 0)}
+                  {formatCurrency(
+                    typeof summary.totalPayablesFromSupplierLedger === 'number'
+                      ? summary.totalPayablesFromSupplierLedger
+                      : typeof summary.totalPayables === 'number'
+                        ? summary.totalPayables
+                        : parseFloat(summary.totalPayables) || 0
+                  )}
                 </Typography>
+                {typeof summary.totalPayablesFromSupplierLedger === 'number' && (
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+                    PO Due: {formatCurrency(typeof summary.totalPayables === 'number' ? summary.totalPayables : parseFloat(summary.totalPayables) || 0)}
+                  </Typography>
+                )}
               </CardContent>
             </Card>
           </Grid>
@@ -1236,6 +1250,11 @@ const AccountingPage: React.FC = () => {
                 <Typography variant="h4" color={summary.netPosition >= 0 ? 'success.main' : 'error.main'}>
                   {formatCurrency(typeof summary.netPosition === 'number' ? summary.netPosition : parseFloat(summary.netPosition) || 0)}
                 </Typography>
+                {typeof summary.totalCustomerCredits === 'number' && (
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+                    Customer credits: {formatCurrency(summary.totalCustomerCredits)}
+                  </Typography>
+                )}
               </CardContent>
             </Card>
           </Grid>

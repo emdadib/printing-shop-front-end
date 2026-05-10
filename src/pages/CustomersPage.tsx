@@ -26,6 +26,11 @@ import {
   Avatar,
   Tooltip,
   Snackbar,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
 } from '@mui/material';
 import {
   Add,
@@ -49,8 +54,8 @@ interface Customer {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
-  phone: string;
+  email: string | null;
+  phone: string | null;
   address?: string;
   loyaltyPoints: number;
   totalOrders: number;
@@ -72,6 +77,7 @@ const customerSchema = yup.object({
 
 const openingBalanceSchema = yup.object({
   amount: yup.number().required('Amount is required').positive('Amount must be positive'),
+  direction: yup.string().oneOf(['CUSTOMER_OWES_STORE', 'STORE_OWES_CUSTOMER']).required('Balance type is required'),
   date: yup.string().required('Date is required'),
   notes: yup.string()
 });
@@ -118,6 +124,7 @@ const CustomersPage: React.FC = () => {
     resolver: yupResolver(openingBalanceSchema),
     defaultValues: {
       amount: 0,
+      direction: 'CUSTOMER_OWES_STORE',
       date: new Date().toISOString().split('T')[0],
       notes: ''
     }
@@ -152,8 +159,8 @@ const CustomersPage: React.FC = () => {
       reset({
         firstName: customer.firstName,
         lastName: customer.lastName,
-        email: customer.email,
-        phone: customer.phone,
+        email: customer.email ?? '',
+        phone: customer.phone ?? '',
         address: customer.address || ''
       });
     } else {
@@ -236,6 +243,7 @@ const CustomersPage: React.FC = () => {
     setSelectedCustomerForBalance(customer);
     resetBalance({
       amount: 0,
+      direction: 'CUSTOMER_OWES_STORE',
       date: new Date().toISOString().split('T')[0],
       notes: ''
     });
@@ -252,12 +260,21 @@ const CustomersPage: React.FC = () => {
     if (!selectedCustomerForBalance) return;
 
     try {
-      // Store always owes customer (payable) - always CREDIT
+      const direction = data.direction as 'CUSTOMER_OWES_STORE' | 'STORE_OWES_CUSTOMER';
+      // Customer ledger semantics:
+      // - Customer owes store => DEBIT (increases receivable)
+      // - Store owes customer / customer credit => CREDIT (reduces receivable; can go negative)
+      const type = direction === 'CUSTOMER_OWES_STORE' ? 'DEBIT' : 'CREDIT';
+      const description =
+        direction === 'CUSTOMER_OWES_STORE'
+          ? 'Opening Balance - Customer owes store'
+          : 'Opening Balance - Store owes customer';
+
       await apiService.post('/accounting/customers/transactions', {
         customerId: selectedCustomerForBalance.id,
-        type: 'CREDIT',
+        type,
         amount: data.amount,
-        description: 'Opening Balance - Store owes customer',
+        description,
         reference: 'OPENING_BALANCE',
         referenceType: 'ADJUSTMENT',
         date: data.date,
@@ -278,12 +295,18 @@ const CustomersPage: React.FC = () => {
     setSnackbar({ open: true, message, severity });
   };
 
-  const filteredCustomers = customers.filter(customer => 
-    customer.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
+  const q = searchTerm.trim().toLowerCase();
+  const filteredCustomers = customers.filter((customer) => {
+    if (!q) return true;
+    const email = customer.email ?? '';
+    const phone = customer.phone ?? '';
+    return (
+      customer.firstName.toLowerCase().includes(q) ||
+      customer.lastName.toLowerCase().includes(q) ||
+      email.toLowerCase().includes(q) ||
+      phone.includes(searchTerm.trim())
+    );
+  });
 
   if (loading) {
     return (
@@ -374,11 +397,11 @@ const CustomersPage: React.FC = () => {
                       <Box>
                         <Box display="flex" alignItems="center" mb={0.5}>
                           <Email sx={{ mr: 1, fontSize: 16, color: 'text.secondary' }} />
-                          <Typography variant="body2">{customer.email}</Typography>
+                          <Typography variant="body2">{customer.email ?? '—'}</Typography>
                         </Box>
                         <Box display="flex" alignItems="center">
                           <Phone sx={{ mr: 1, fontSize: 16, color: 'text.secondary' }} />
-                          <Typography variant="body2">{customer.phone}</Typography>
+                          <Typography variant="body2">{customer.phone ?? '—'}</Typography>
                         </Box>
                         {customer.address && (
                           <Box display="flex" alignItems="center" mt={0.5}>
@@ -579,10 +602,28 @@ const CustomersPage: React.FC = () => {
             <DialogContent>
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="body2">
-                  <strong>Opening Balance:</strong> Amount the store owes to the customer (Payable)
+                  <strong>Opening Balance:</strong> Choose whether the customer owes the store (Receivable) or the store owes the customer (Customer credit).
                 </Typography>
               </Alert>
               <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Controller
+                    name="direction"
+                    control={balanceControl}
+                    render={({ field }) => (
+                      <FormControl fullWidth error={!!balanceErrors.direction}>
+                        <InputLabel>Balance Type *</InputLabel>
+                        <Select {...field} label="Balance Type *">
+                          <MenuItem value="CUSTOMER_OWES_STORE">Customer owes store (Receivable)</MenuItem>
+                          <MenuItem value="STORE_OWES_CUSTOMER">Store owes customer (Customer credit)</MenuItem>
+                        </Select>
+                        {balanceErrors.direction?.message ? (
+                          <FormHelperText>{String(balanceErrors.direction?.message)}</FormHelperText>
+                        ) : null}
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
                 <Grid item xs={12}>
                   <Controller
                     name="amount"

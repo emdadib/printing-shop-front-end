@@ -19,6 +19,12 @@ export const menuItems: MenuItem[] = [
     icon: 'Dashboard'
   },
   {
+    name: 'attendance',
+    label: 'Attendance',
+    path: '/attendance',
+    icon: 'AccessTime',
+  },
+  {
     name: 'orders',
     label: 'Orders',
     path: '/orders',
