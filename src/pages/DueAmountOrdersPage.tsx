@@ -13,6 +13,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   Typography,
 } from '@mui/material';
@@ -21,7 +22,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiService } from '@/services/api';
 import { useSettings } from '@/hooks/useSettings';
 
-interface Order {
+interface OrderWithDue {
   id: string;
   orderNumber: string;
   customer?: {
@@ -34,17 +35,15 @@ interface Order {
   type: string;
   total: number | string;
   createdAt: string;
-}
-
-interface OrderWithDue extends Order {
   dueAmount: number;
 }
 
-const chunk = <T,>(arr: T[], size: number) => {
-  const res: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
-  return res;
-};
+interface DueOrdersResponse {
+  success: boolean;
+  data: OrderWithDue[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+  summary: { totalOrders: number; totalDue: number };
+}
 
 const DueAmountOrdersPage: React.FC = () => {
   const navigate = useNavigate();
@@ -53,56 +52,33 @@ const DueAmountOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orders, setOrders] = useState<OrderWithDue[]>([]);
+  const [page, setPage] = useState(0); // MUI TablePagination is 0-indexed
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalDueAll, setTotalDueAll] = useState(0);
 
-  const fetchOrdersWithDueAmount = async () => {
+  const fetchOrdersWithDueAmount = async (pageIndex: number, limit: number) => {
     try {
       setLoading(true);
       setError(null);
 
-      // 1) Fetch all orders (paged, backend max is 100)
-      const pageSize = 100;
-      let page = 1;
-      let pages = 1;
-      let allOrders: Order[] = [];
+      const response = await apiService.get<DueOrdersResponse>(
+        `/orders/with-due?page=${pageIndex + 1}&limit=${limit}`
+      );
 
-      while (page <= pages) {
-        const response = await apiService.get(`/orders?page=${page}&limit=${pageSize}`);
-        const data = response?.data ?? response;
-
-        if (response?.success && Array.isArray(data)) {
-          allOrders = allOrders.concat(data);
-          pages = response.pagination?.pages ?? pages;
-        } else if (Array.isArray(data)) {
-          allOrders = allOrders.concat(data);
-          pages = page; // stop
-        } else {
-          break;
-        }
-
-        page += 1;
+      if (response?.success) {
+        const list = (response.data || []).map((o) => ({
+          ...o,
+          dueAmount: Number(o.dueAmount) || 0,
+        }));
+        setOrders(list);
+        setTotalRows(response.pagination?.total ?? list.length);
+        setTotalDueAll(Number(response.summary?.totalDue) || 0);
+      } else {
+        setOrders([]);
+        setTotalRows(0);
+        setTotalDueAll(0);
       }
-
-      // 2) For each order, fetch due amount (batched to avoid too many parallel requests)
-      const batches = chunk(allOrders, 25);
-      const withDue: OrderWithDue[] = [];
-
-      for (const batch of batches) {
-        const results = await Promise.allSettled(
-          batch.map(async (o) => {
-            const r = await apiService.get(`/payments/order/${o.id}/due`);
-            // server shape: { success: true, data: { orderId, dueAmount } }
-            const dueAmount = Number(r?.data?.dueAmount ?? r?.dueAmount ?? r?.data?.data?.dueAmount ?? 0);
-            return { ...o, dueAmount };
-          })
-        );
-
-        for (const r of results) {
-          if (r.status === 'fulfilled') withDue.push(r.value);
-        }
-      }
-
-      // 3) Keep only orders where dueAmount > 0
-      setOrders(withDue.filter((o) => o.dueAmount > 0).sort((a, b) => b.dueAmount - a.dueAmount));
     } catch (e) {
       console.error('Due amount orders fetch error:', e);
       setError('Failed to load orders with due amount');
@@ -112,14 +88,19 @@ const DueAmountOrdersPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchOrdersWithDueAmount();
-  }, []);
+    fetchOrdersWithDueAmount(page, rowsPerPage);
+  }, [page, rowsPerPage]);
 
-  const totals = useMemo(() => {
-    const totalDue = orders.reduce((sum, o) => sum + (Number(o.dueAmount) || 0), 0);
-    const totalOrders = orders.length;
-    return { totalDue, totalOrders };
-  }, [orders]);
+  const pageDueTotal = useMemo(
+    () => orders.reduce((sum, o) => sum + (Number(o.dueAmount) || 0), 0),
+    [orders]
+  );
+
+  const handleChangePage = (_: unknown, newPage: number) => setPage(newPage);
+  const handleChangeRowsPerPage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(e.target.value, 10));
+    setPage(0);
+  };
 
   return (
     <Box p={3}>
@@ -131,7 +112,11 @@ const DueAmountOrdersPage: React.FC = () => {
           <Typography variant="h4">Orders With Due Amount</Typography>
         </Box>
 
-        <Button variant="outlined" onClick={fetchOrdersWithDueAmount} disabled={loading}>
+        <Button
+          variant="outlined"
+          onClick={() => fetchOrdersWithDueAmount(page, rowsPerPage)}
+          disabled={loading}
+        >
           Refresh
         </Button>
       </Box>
@@ -146,10 +131,13 @@ const DueAmountOrdersPage: React.FC = () => {
         <CardContent>
           <Box display="flex" gap={3} flexWrap="wrap">
             <Typography variant="body1">
-              Showing <strong>{totals.totalOrders}</strong> order{totals.totalOrders === 1 ? '' : 's'} with due.
+              <strong>{totalRows}</strong> order{totalRows === 1 ? '' : 's'} with due (all pages).
             </Typography>
             <Typography variant="body1">
-              Total due: <strong>{formatCurrency(totals.totalDue)}</strong>
+              Total due (all pages): <strong>{formatCurrency(totalDueAll)}</strong>
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              This page: <strong>{formatCurrency(pageDueTotal)}</strong>
             </Typography>
           </Box>
         </CardContent>
@@ -225,10 +213,18 @@ const DueAmountOrdersPage: React.FC = () => {
             )}
           </TableBody>
         </Table>
+        <TablePagination
+          component="div"
+          count={totalRows}
+          page={page}
+          onPageChange={handleChangePage}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+        />
       </TableContainer>
     </Box>
   );
 };
 
 export default DueAmountOrdersPage;
-
