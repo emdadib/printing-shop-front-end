@@ -48,9 +48,9 @@ import {
   Payment,
   Print,
   CheckCircle,
-  PointOfSale
+  PointOfSale,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -129,6 +129,7 @@ const orderSchema = yup.object({
 
 const OrdersPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { formatCurrency, getSettingValue } = useSettings();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -217,6 +218,25 @@ const OrdersPage: React.FC = () => {
   useEffect(() => {
     fetchOrders();
   }, [page, rowsPerPage, statusFilter, startDate, endDate, searchTerm]);
+
+  // If navigated with ?orderId=..., open that order details directly
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const orderId = params.get('orderId');
+    if (!orderId) return;
+
+    (async () => {
+      try {
+        const response = await apiService.get(`/orders/${orderId}`);
+        const order = response?.data || response;
+        if (response?.success && order?.id) {
+          handleOpenDetailsDialog(order);
+        }
+      } catch (e) {
+        console.error('Failed to open order by id:', orderId, e);
+      }
+    })();
+  }, [location.search]);
 
   // Fetch due amount for a specific order
   const fetchDueAmountForOrder = async (orderId: string): Promise<number> => {
@@ -869,6 +889,14 @@ const OrdersPage: React.FC = () => {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Orders</Typography>
         <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<Payment />}
+            onClick={() => navigate('/orders/due-amount')}
+          >
+            Due Amount
+          </Button>
           <Button
             variant="outlined"
             color="primary"

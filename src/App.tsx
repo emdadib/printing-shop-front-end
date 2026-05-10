@@ -13,6 +13,7 @@ import ProductsPage from '@/pages/ProductsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
 import InventoryPage from '@/pages/InventoryPage'
 import OrdersPage from '@/pages/OrdersPage'
+import DueAmountOrdersPage from '@/pages/DueAmountOrdersPage'
 import POSOrderPage from '@/pages/POSOrderPage'
 import CustomersPage from '@/pages/CustomersPage'
 import SuppliersPage from '@/pages/SuppliersPage'
@@ -112,6 +113,7 @@ const App: React.FC = () => {
                 <Route path="/categories" element={<CategoriesPage />} />
                 <Route path="/inventory" element={<InventoryPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/orders/due-amount" element={<DueAmountOrdersPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/suppliers" element={<SuppliersPage />} />
                 <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
