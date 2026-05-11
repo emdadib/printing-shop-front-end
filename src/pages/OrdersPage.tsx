@@ -187,10 +187,13 @@ const OrdersPage: React.FC = () => {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENTAGE'>('AMOUNT');
 
+  const WALK_IN_MAX_TOTAL = 1000;
+
   const {
     control,
     handleSubmit,
     reset,
+    watch,
     formState: { errors }
   } = useForm({
     resolver: yupResolver(orderSchema),
@@ -200,6 +203,8 @@ const OrdersPage: React.FC = () => {
       notes: ''
     }
   });
+
+  const selectedCustomerId = watch('customerId');
 
 
 
@@ -558,6 +563,13 @@ const OrdersPage: React.FC = () => {
 
     if (orderItems.length === 0) {
       setError('Please add at least one item to the order');
+      return;
+    }
+
+    if (data.customerId === 'walk-in' && calculateOrderTotal() > WALK_IN_MAX_TOTAL) {
+      setError(
+        `Orders above ${formatCurrency(WALK_IN_MAX_TOTAL)} require a registered customer — walk-in is not allowed.`
+      );
       return;
     }
 
@@ -1496,15 +1508,25 @@ const OrdersPage: React.FC = () => {
                           onChange={(_, newValue) => {
                             field.onChange(newValue ? newValue.id : 'walk-in');
                           }}
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              label="Customer"
-                              error={!!errors.customerId}
-                              helperText={errors.customerId?.message}
-                              placeholder="Search by name, email, or phone..."
-                            />
-                          )}
+                          renderInput={(params) => {
+                            const overWalkInLimit =
+                              (selectedCustomerId === 'walk-in' || !selectedCustomerId) &&
+                              calculateOrderTotal() > WALK_IN_MAX_TOTAL;
+                            return (
+                              <TextField
+                                {...params}
+                                label="Customer"
+                                error={!!errors.customerId || overWalkInLimit}
+                                helperText={
+                                  errors.customerId?.message ||
+                                  (overWalkInLimit
+                                    ? `Walk-in not allowed above ${formatCurrency(WALK_IN_MAX_TOTAL)} — select a customer.`
+                                    : undefined)
+                                }
+                                placeholder="Search by name, email, or phone..."
+                              />
+                            );
+                          }}
                           noOptionsText="No customers found"
                         />
                       )}
