@@ -4,6 +4,10 @@
   "description": "Frontend for Printing Shop Management System",
   "private": true,
   "dependencies": {
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "^8.3.3",
+    "@capacitor/status-bar": "^8.0.2",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@hookform/resolvers": "^3.3.2",
@@ -42,6 +46,8 @@
     "yup": "^1.3.3"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.3.3",
     "@types/lodash": "^4.14.202",
     "@types/react": "^18.2.45",
     "@types/react-beautiful-dnd": "^13.1.8",

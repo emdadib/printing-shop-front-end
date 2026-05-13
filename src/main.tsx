@@ -13,7 +13,21 @@ import App from './App'
 import { store } from './store'
 import { theme } from './theme'
 import { ErrorFallback } from './components/ErrorFallback'
+import { isNativeApp } from './utils/platform'
 import './index.css'
+
+if (isNativeApp) {
+  void (async () => {
+    const { App: CapApp } = await import('@capacitor/app')
+    const { StatusBar, Style } = await import('@capacitor/status-bar')
+    StatusBar.setStyle({ style: Style.Light }).catch(() => {})
+    StatusBar.setBackgroundColor({ color: '#1976d2' }).catch(() => {})
+    CapApp.addListener('backButton', ({ canGoBack }) => {
+      if (canGoBack) window.history.back()
+      else CapApp.exitApp()
+    })
+  })()
+}
 
 // Create a client
 const queryClient = new QueryClient({

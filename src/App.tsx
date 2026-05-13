@@ -37,6 +37,7 @@ import { usePhotocopySetting } from '@/hooks/usePhotocopySetting'
 import { authApi } from '@/services/authApi'
 import { RootState } from '@/store'
 import { setUser } from '@/store/slices/authSlice'
+import { isNativeApp } from '@/utils/platform'
 
 const App: React.FC = () => {
   const dispatch = useDispatch()
@@ -107,7 +108,7 @@ const App: React.FC = () => {
           <Route path="*" element={
             <Layout>
               <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/" element={<Navigate to={isNativeApp ? '/attendance' : '/dashboard'} replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />
@@ -130,7 +131,7 @@ const App: React.FC = () => {
                 <Route path="/profile" element={<UserProfilePage />} />
                 {photocopyEnabled && <Route path="/photocopy" element={<PhotocopyPage />} />}
                 <Route path="/attendance" element={<AttendancePage />} />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to={isNativeApp ? '/attendance' : '/dashboard'} replace />} />
               </Routes>
             </Layout>
           } />

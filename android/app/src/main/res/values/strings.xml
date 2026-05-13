@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SB Printers</string>
+    <string name="title_activity_main">SB Printers</string>
+    <string name="package_name">com.sbprinters.staff</string>
+    <string name="custom_url_scheme">com.sbprinters.staff</string>
+</resources>
