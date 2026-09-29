@@ -7,3 +7,6 @@
 .env.production.local
 .env.test
 .env.test.local
+
+# Dependencies / tool caches (workspace deps are hoisted to the repo root)
+node_modules/

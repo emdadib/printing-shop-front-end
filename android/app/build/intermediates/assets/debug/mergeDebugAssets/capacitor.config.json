@@ -1,0 +1,8 @@
+{
+	"appId": "com.sbprinters.staff",
+	"appName": "SB Printers",
+	"webDir": "dist",
+	"android": {
+		"allowMixedContent": false
+	}
+}

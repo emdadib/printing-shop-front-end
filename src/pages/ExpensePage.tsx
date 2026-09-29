@@ -48,6 +48,7 @@ import * as yup from 'yup';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { apiService } from '../services/api';
 import { useSettings } from '../hooks/useSettings';
+import ExpenseTotalsBar from '../components/ExpenseTotalsBar';
 
 // Types
 interface Expense {
@@ -125,6 +126,7 @@ const ExpensePage: React.FC = () => {
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
   const [dateFilter, setDateFilter] = useState<{ start: string; end: string }>({
     start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
@@ -166,15 +168,11 @@ const ExpensePage: React.FC = () => {
     try {
       setLoading(true);
       const response = await apiService.get(`/accounting/expenses?startDate=${dateFilter.start}&endDate=${dateFilter.end}&page=${page + 1}&limit=${rowsPerPage}`);
-      if (response.success && response.data) {
-        setExpenses(response.data.transactions || []);
-      } else if (response.transactions) {
-        setExpenses(response.transactions || []);
-      } else if (Array.isArray(response)) {
-        setExpenses(response);
-      } else {
-        setExpenses([]);
-      }
+      const payload = response?.success && response.data ? response.data : response;
+      const list: Expense[] = Array.isArray(payload) ? payload : payload?.transactions || [];
+      setExpenses(list);
+      // Server-side total for the current filter so pagination spans every page
+      setTotalCount(Number(payload?.pagination?.total ?? list.length));
     } catch (error) {
       console.error('Error fetching expenses:', error);
       setExpenses([]);
@@ -504,6 +502,15 @@ const ExpensePage: React.FC = () => {
         </Box>
       </Box>
 
+      {/* Filtered totals: the grand total is always visible, followed by per-category totals */}
+      <ExpenseTotalsBar
+        total={summary?.totalExpenses ?? 0}
+        categoryTotals={summary?.categoryBreakdown ?? []}
+        startDate={dateFilter.start}
+        endDate={dateFilter.end}
+        formatCurrency={formatCurrency}
+      />
+
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -574,7 +581,7 @@ const ExpensePage: React.FC = () => {
         <TablePagination
           rowsPerPageOptions={[10, 25, 50]}
           component="div"
-          count={expenses.length}
+          count={totalCount}
           rowsPerPage={rowsPerPage}
           page={page}
           onPageChange={(_, newPage) => setPage(newPage)}

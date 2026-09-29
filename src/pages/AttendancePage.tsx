@@ -300,7 +300,7 @@ const AttendancePage: React.FC = () => {
     if (configData?.data && !configChanged) {
       setConfigForm({ ...configData.data })
     }
-  }, [configData]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [configData])
 
   const updateConfigMutation = useMutation(
     (data: Partial<Omit<AttendanceConfigData, 'id'>>) => attendanceApi.updateConfig(data),

@@ -31,6 +31,7 @@ import {
   Close,
   Delete,
   Payment,
+  PersonAdd,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
@@ -38,6 +39,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { apiService } from '@/services/api';
 import { useSettings } from '@/hooks/useSettings';
+import QuickCustomerDialog, { QuickCustomer } from '@/components/QuickCustomerDialog';
 
 interface Product {
   id: string;
@@ -58,8 +60,8 @@ interface Customer {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
-  phone: string;
+  email: string | null;
+  phone: string | null;
 }
 
 interface CartItem {
@@ -76,6 +78,9 @@ const orderSchema = yup.object({
   notes: yup.string(),
 });
 
+// Sentinel id for the synthetic "Add ... as new customer" option in the customer search
+const CREATE_CUSTOMER_OPTION_ID = '__create_customer__';
+
 const POSOrderPage: React.FC = () => {
   const navigate = useNavigate();
   const { formatCurrency, getSettingValue } = useSettings();
@@ -90,6 +95,8 @@ const POSOrderPage: React.FC = () => {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENTAGE'>('AMOUNT');
   const [loading, setLoading] = useState(false);
+  const [customerInputValue, setCustomerInputValue] = useState('');
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -103,6 +110,7 @@ const POSOrderPage: React.FC = () => {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm({
     resolver: yupResolver(orderSchema),
@@ -114,6 +122,21 @@ const POSOrderPage: React.FC = () => {
   });
 
   const selectedCustomerId = watch('customerId');
+
+  const openQuickCustomer = () => setQuickCustomerOpen(true);
+
+  const handleCustomerCreated = (customer: QuickCustomer) => {
+    setCustomers((prev) => [customer, ...prev.filter((c) => c.id !== customer.id)]);
+    setValue('customerId', customer.id, { shouldValidate: true, shouldDirty: true });
+    setCustomerInputValue('');
+    setQuickCustomerOpen(false);
+    const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
+    setSnackbar({
+      open: true,
+      message: 'Customer "' + fullName + '" created and selected',
+      severity: 'success',
+    });
+  };
 
   useEffect(() => {
     fetchProducts();
@@ -526,11 +549,19 @@ const POSOrderPage: React.FC = () => {
             {/* Customer and Order Type in one row */}
             <Grid container spacing={2} sx={{ mb: 2 }}>
               <Grid item xs={12} sm={6}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
                 <Controller
                   name="customerId"
                   control={control}
                   render={({ field }) => (
                     <Autocomplete
+                      sx={{ flex: 1 }}
+                      isOptionEqualToValue={(option, value) => option.id === value.id}
+                      onInputChange={(_, value, reason) => {
+                        if (reason === 'input') {
+                          setCustomerInputValue(value);
+                        }
+                      }}
                       options={[
                         { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
                         ...customers
@@ -539,22 +570,38 @@ const POSOrderPage: React.FC = () => {
                         if (option.id === 'walk-in') {
                           return '🚶 Walk-in Customer';
                         }
+                        if (option.id === CREATE_CUSTOMER_OPTION_ID) {
+                          return `➕ Add "${option.firstName}" as new customer`;
+                        }
                         return `${option.firstName} ${option.lastName}${option.email ? ` (${option.email})` : ''}${option.phone ? ` - ${option.phone}` : ''}`;
                       }}
                       filterOptions={(options, { inputValue }) => {
-                        const searchTerm = inputValue.toLowerCase();
-                        return options.filter((option) => {
+                        const trimmedInput = inputValue.trim();
+                        const searchTerm = trimmedInput.toLowerCase();
+                        const filtered = options.filter((option) => {
                           if (option.id === 'walk-in') {
                             return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
                           }
                           return (
                             option.firstName.toLowerCase().includes(searchTerm) ||
                             option.lastName.toLowerCase().includes(searchTerm) ||
-                            option.email.toLowerCase().includes(searchTerm) ||
-                            option.phone.toLowerCase().includes(searchTerm) ||
+                            (option.email ?? '').toLowerCase().includes(searchTerm) ||
+                            (option.phone ?? '').toLowerCase().includes(searchTerm) ||
                             `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
                           );
                         });
+                        // Offer to create the customer when no registered customer matches
+                        const hasRegisteredMatch = filtered.some((option) => option.id !== 'walk-in');
+                        if (searchTerm && !hasRegisteredMatch) {
+                          filtered.push({
+                            id: CREATE_CUSTOMER_OPTION_ID,
+                            firstName: trimmedInput,
+                            lastName: '',
+                            email: null,
+                            phone: null,
+                          });
+                        }
+                        return filtered;
                       }}
                       value={
                         field.value === 'walk-in'
@@ -562,6 +609,13 @@ const POSOrderPage: React.FC = () => {
                           : customers.find((c) => c.id === field.value) || null
                       }
                       onChange={(_, newValue) => {
+                        if (newValue?.id === CREATE_CUSTOMER_OPTION_ID) {
+                          // Keep the current selection and open the quick-add dialog with the typed name
+                          setCustomerInputValue(newValue.firstName);
+                          setQuickCustomerOpen(true);
+                          return;
+                        }
+                        setCustomerInputValue('');
                         field.onChange(newValue ? newValue.id : 'walk-in');
                       }}
                       renderInput={(params) => {
@@ -588,6 +642,17 @@ const POSOrderPage: React.FC = () => {
                     />
                   )}
                 />
+                <IconButton
+                  color="primary"
+                  size="small"
+                  onClick={openQuickCustomer}
+                  aria-label="Add new customer"
+                  title="Add new customer"
+                  sx={{ mt: 0.5 }}
+                >
+                  <PersonAdd />
+                </IconButton>
+                </Box>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Controller
@@ -885,6 +950,14 @@ const POSOrderPage: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+
+      {/* Quick-add customer dialog (opened from the customer search) */}
+      <QuickCustomerDialog
+        open={quickCustomerOpen}
+        initialName={customerInputValue}
+        onClose={() => setQuickCustomerOpen(false)}
+        onCreated={handleCustomerCreated}
+      />
 
       {/* Snackbar */}
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>

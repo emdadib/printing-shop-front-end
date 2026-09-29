@@ -99,8 +99,8 @@ interface Customer {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
-  phone: string;
+  email: string | null;
+  phone: string | null;
 }
 
 interface OrderItem {
@@ -1494,8 +1494,8 @@ const OrdersPage: React.FC = () => {
                               return (
                                 option.firstName.toLowerCase().includes(searchTerm) ||
                                 option.lastName.toLowerCase().includes(searchTerm) ||
-                                option.email.toLowerCase().includes(searchTerm) ||
-                                option.phone.toLowerCase().includes(searchTerm) ||
+                                (option.email ?? '').toLowerCase().includes(searchTerm) ||
+                                (option.phone ?? '').toLowerCase().includes(searchTerm) ||
                                 `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
                               );
                             });
