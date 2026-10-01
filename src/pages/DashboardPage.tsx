@@ -7,6 +7,7 @@ import {
   CardContent,
   Typography,
   Button,
+  ButtonBase,
   Chip,
   List,
   ListItem,
@@ -17,17 +18,17 @@ import {
 } from '@mui/material';
 import {
   ShoppingCart,
-  People,
-  Inventory,
   AttachMoney,
   Warning,
-  ContentCopy,
   AccountBalance
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { apiService } from '@/services/api';
+import { alpha } from '@mui/material/styles';
+import { useNavigation } from '@/hooks/useNavigation';
+import { quickActionKeys, type NavItem } from '@/config/navigation';
 
 interface DashboardStats {
   today: {
@@ -71,10 +72,76 @@ interface DashboardStats {
   }>;
 }
 
+interface QuickActionTileProps {
+  item: NavItem;
+  onClick: () => void;
+}
+
+/** Large, tappable shortcut used on the dashboard. */
+const QuickActionTile: React.FC<QuickActionTileProps> = ({ item, onClick }) => {
+  const Icon = item.icon;
+  return (
+    <ButtonBase
+      onClick={onClick}
+      sx={{
+        width: '100%',
+        height: '100%',
+        p: 2,
+        borderRadius: 3.5,
+        border: 1,
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        textAlign: 'left',
+        gap: 1.5,
+        transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.15s',
+        '&:hover, &:focus-visible': {
+          borderColor: 'primary.main',
+          boxShadow: (theme) => `0 6px 18px ${alpha(theme.palette.primary.main, 0.15)}`,
+          transform: 'translateY(-2px)',
+        },
+      }}
+    >
+      <Box
+        sx={{
+          width: 48,
+          height: 48,
+          borderRadius: 2.5,
+          display: 'grid',
+          placeItems: 'center',
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+          color: 'primary.main',
+        }}
+      >
+        <Icon />
+      </Box>
+      <Box>
+        <Typography fontWeight={700}>{item.label}</Typography>
+        {item.hint && (
+          <Typography variant="body2" color="text.secondary">
+            {item.hint}
+          </Typography>
+        )}
+      </Box>
+    </ButtonBase>
+  );
+};
+
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { formatCurrency } = useCurrency();
   const navigate = useNavigate();
+  const { getItem } = useNavigation();
+  const quickActions = quickActionKeys
+    .map((key) => getItem(key))
+    .filter((item): item is NavItem => Boolean(item));
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,58 +239,25 @@ const DashboardPage: React.FC = () => {
   return (
     <Box p={3}>
       {/* Welcome Header */}
-      <Box mb={3} display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
-        <Box>
-          <Typography variant="h4" gutterBottom>
-            Welcome back, {user?.firstName}!
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Here's what's happening with your printing shop today.
-          </Typography>
-        </Box>
-        <Box display="flex" flexWrap="wrap" gap={1.5} sx={{ justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-          <Button 
-            variant="contained" 
-            startIcon={<ShoppingCart />}
-            onClick={() => navigate('/orders')}
-            size="small"
-          >
-            New Order
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<People />}
-            onClick={() => navigate('/customers')}
-            size="small"
-          >
-            Add Customer
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<Inventory />}
-            onClick={() => navigate('/inventory')}
-            size="small"
-          >
-            Update Inventory
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<AttachMoney />}
-            onClick={() => navigate('/orders')}
-            size="small"
-          >
-            Process Payment
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<ContentCopy />}
-            onClick={() => navigate('/photocopy')}
-            size="small"
-          >
-            Photocopy Service
-          </Button>
-        </Box>
+      <Box mb={3}>
+        <Typography variant="h4" gutterBottom>
+          Hello, {user?.firstName || 'there'}
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          {todayLabel} · What would you like to do?
+        </Typography>
       </Box>
+
+      {/* Quick actions: big tiles for everyday tasks, filtered by permission */}
+      {quickActions.length > 0 && (
+        <Grid container spacing={2} mb={4}>
+          {quickActions.map((item) => (
+            <Grid item xs={6} sm={4} md={3} key={item.key}>
+              <QuickActionTile item={item} onClick={() => navigate(item.path)} />
+            </Grid>
+          ))}
+        </Grid>
+      )}
 
       {/* Key Metrics */}
       <Grid container spacing={3} mb={3}>

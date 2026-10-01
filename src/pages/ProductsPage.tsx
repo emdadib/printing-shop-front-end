@@ -222,8 +222,6 @@ const ProductsPage: React.FC = () => {
         productsList = response;
       } else if (response.data && Array.isArray(response.data)) {
         productsList = response.data;
-      } else if (response.success && response.data && Array.isArray(response.data)) {
-        productsList = response.data;
       } else {
         console.error('Invalid products response format:', response);
         setError('Invalid response format from server. Please try refreshing the page.');

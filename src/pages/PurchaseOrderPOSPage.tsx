@@ -66,7 +66,7 @@ interface Supplier {
   id: string;
   name: string;
   company: string;
-  email: string;
+  email: string | null;
   phone: string;
   isActive: boolean;
 }
@@ -613,8 +613,8 @@ const PurchaseOrderPOSPage: React.FC = () => {
                         return options.filter((option) =>
                           option.name.toLowerCase().includes(searchTerm) ||
                           option.company.toLowerCase().includes(searchTerm) ||
-                          option.email.toLowerCase().includes(searchTerm) ||
-                          option.phone.toLowerCase().includes(searchTerm)
+                          (option.email ?? '').toLowerCase().includes(searchTerm) ||
+                          (option.phone ?? '').toLowerCase().includes(searchTerm)
                         );
                       }}
                       value={suppliers.find((s) => s.id === field.value) || null}

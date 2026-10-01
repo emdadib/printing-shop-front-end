@@ -150,7 +150,8 @@ body {
   }
   
   .MuiAppBar-root,
-  .MuiDrawer-root {
+  .MuiDrawer-root,
+  .app-bottom-nav {
     display: none !important;
   }
 }
@@ -166,20 +167,12 @@ body {
   }
 }
 
-/* Focus styles for accessibility */
-*:focus {
-  outline: 2px solid #1976d2;
-  outline-offset: 2px;
+/* Focus ring only for keyboard users, so mouse and touch clicks do not leave blue boxes behind */
+:focus {
+  outline: none;
 }
 
-/* Button focus styles */
-button:focus {
-  outline: 2px solid #1976d2;
-  outline-offset: 2px;
-}
-
-/* Link focus styles */
-a:focus {
+:focus-visible {
   outline: 2px solid #1976d2;
   outline-offset: 2px;
 }

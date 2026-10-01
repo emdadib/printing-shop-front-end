@@ -1,0 +1,4 @@
+#Wed May 13 07:20:44 BDT 2026
+base.0=D\:\\printing-shop\\client\\android\\app\\build\\intermediates\\dex\\release\\mergeDexRelease\\classes.dex
+path.0=classes.dex
+renamed.0=classes.dex

@@ -1,0 +1,3 @@
+com.sbprinters.staff.test
+style WhiteBackgroundDialogTheme
+style WhiteBackgroundTheme
