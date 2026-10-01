@@ -1,81 +1,173 @@
 import { apiService } from './api'
 
-export interface Salary {
+/**
+ * Salary module API (`/api/salary`).
+ *
+ *  - profiles : each employee's monthly base salary
+ *  - payouts  : cash handed to an employee during the month (recorded in one
+ *               step; the money is given when the row is created)
+ *  - process  : month-end settlement per employee: pays the remainder or
+ *               carries the shortfall forward to the next processed month
+ */
+
+export interface PersonRef {
+  id: string
+  firstName: string
+  lastName: string
+  role?: string
+  email?: string
+}
+
+export type PayoutStatus = 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED' | 'CANCELLED'
+export type RowStatus = 'OPEN' | 'PROCESSED'
+
+export interface SalaryProfile {
+  id: string
+  userId: string
+  baseSalary: number
+  user: PersonRef
+}
+
+export interface SalaryPayout {
   id: string
   userId: string
   amount: number
-  month: number
-  year: number
-  status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED'
-  paidAt?: string
-  paidBy?: string
-  notes?: string
-  deductions?: number
-  bonuses?: number
-  advances?: number
-  createdAt: string
-  updatedAt: string
-  user: {
-    id: string
-    firstName: string
-    lastName: string
-    email: string
-    role: string
-  }
-  paidByUser?: {
-    id: string
-    firstName: string
-    lastName: string
-  }
-  salaryAdvances?: Array<{
-    id: string
-    amount: number
-    status: string
-  }>
+  status: PayoutStatus
+  /** ISO date the money was given. */
+  date: string
+  reason: string | null
+  notes: string | null
+  givenBy: PersonRef | null
+  user: PersonRef
 }
 
-export interface CreateSalaryData {
+export interface AttendanceDeductionInfo {
   userId: string
-  amount: number
+  deductionAmount: number
+  lateDays: number
+  absentDays: number
+  totalDeductionDays: number
+}
+
+export interface EmployeeMonthRow {
+  userId: string
+  user: PersonRef
+  status: RowStatus
+  hasProfile: boolean
+  baseSalary: number
+  attendance: AttendanceDeductionInfo | null
+  deductions: number
+  bonuses: number
+  payoutsTotal: number
+  payoutsCount: number
+  /** Legacy payouts still waiting to be handed over; they block processing. */
+  pendingPayoutsCount: number
+  payouts: SalaryPayout[]
+  previousBalance: number
+  /** Signed: positive = company pays, negative = employee owes. */
+  netAmount: number
+  paidAmount: number
+  carryForward: number
+  processed: {
+    id: string
+    paidAt: string | null
+    processedBy: PersonRef | null
+    notes: string | null
+  } | null
+}
+
+export interface MonthTotals {
+  employees: number
+  processedCount: number
+  openCount: number
+  baseSalary: number
+  payouts: number
+  deductions: number
+  bonuses: number
+  previousBalance: number
+  netAmount: number
+  toPayAtProcessing: number
+  paidAtProcessing: number
+  owed: number
+  projectedOwed: number
+  cashOut: number
+}
+
+export interface MonthReport {
   month: number
   year: number
-  notes?: string
-  deductions?: number
-  bonuses?: number
+  label: string
+  rows: EmployeeMonthRow[]
+  totals: MonthTotals
 }
 
-export interface UpdateSalaryData {
-  amount?: number
-  notes?: string
-  deductions?: number
-  bonuses?: number
-  status?: Salary['status']
+export interface ProcessedMonth {
+  id: string
+  userId: string
+  status: 'PENDING' | 'PAID' | 'CANCELLED'
+  amount: number
+  deductions: number
+  bonuses: number
+  advances: number
+  previousBalance: number
+  netAmount: number
+  paidAmount: number
+  carryForward: number
+  paidAt: string | null
+  processedBy: PersonRef | null
+  notes: string | null
+  user: PersonRef
 }
 
-export interface SalarySummary {
-  totalSalaries: number
-  totalAmount: number
-  totalDeductions: number
-  totalBonuses: number
-  paidSalaries: number
-  pendingSalaries: number
-  approvedSalaries: number
-  salaries: Salary[]
+export interface EmployeeYearMonth {
+  month: number
+  year: number
+  label: string
+  status: RowStatus
+  baseSalary: number
+  payoutsTotal: number
+  payoutsCount: number
+  deductions: number
+  bonuses: number
+  previousBalance: number | null
+  netAmount: number | null
+  paidAmount: number | null
+  carryForward: number | null
+  processedAt: string | null
+  processedBy: PersonRef | null
+  processedId: string | null
+  payouts: SalaryPayout[]
 }
 
-export interface SalariesResponse {
+export interface EmployeeYear {
+  user: PersonRef
+  year: number
+  baseSalary: number | null
+  currentBalanceOwed: number
+  months: EmployeeYearMonth[]
+  totals: {
+    payouts: number
+    paidAtProcessing: number
+    cashOut: number
+    deductions: number
+    bonuses: number
+    processedMonths: number
+  }
+}
+
+export interface ProcessAllResult {
+  month: number
+  year: number
+  label: string
+  processedCount: number
+  processed: ProcessedMonth[]
+  skipped: { userId: string; name: string; reason: string }[]
+}
+
+export interface ApiResponse<T> {
   success: boolean
-  data: Salary[]
-}
-
-export interface SalaryResponse {
-  success: boolean
-  data: Salary
-}
-
-export interface SalarySummaryResponse {
-  success: boolean
-  data: SalarySummary
+  data: T
+  message?: string
 }
 
 export interface MessageResponse {
@@ -83,51 +175,61 @@ export interface MessageResponse {
   message: string
 }
 
+export interface CreatePayoutData {
+  userId: string
+  amount: number
+  month: number
+  year: number
+  /** ISO date (YYYY-MM-DD) the money was given; defaults to now. */
+  date?: string
+  reason?: string
+  notes?: string
+}
+
+export interface ProcessMonthData {
+  userId: string
+  month: number
+  year: number
+  deductions?: number
+  bonuses?: number
+  notes?: string
+}
+
+export interface SetBaseSalaryData {
+  userId: string
+  baseSalary: number
+  notes?: string
+}
+
 export const salaryApi = {
-  // Get all salaries with optional filtering
-  getAllSalaries: async (params?: {
-    month?: number
-    year?: number
-    userId?: string
-    status?: string
-  }): Promise<SalariesResponse> => {
-    const queryParams = new URLSearchParams()
-    if (params?.month) queryParams.append('month', params.month.toString())
-    if (params?.year) queryParams.append('year', params.year.toString())
-    if (params?.userId) queryParams.append('userId', params.userId)
-    if (params?.status) queryParams.append('status', params.status)
-    
-    const url = `/salaries${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
-    return apiService.get<SalariesResponse>(url)
-  },
+  getProfiles: () => apiService.get<ApiResponse<SalaryProfile[]>>('/salary/profiles'),
 
-  // Get salary by ID
-  getSalaryById: async (id: string): Promise<SalaryResponse> => {
-    return apiService.get<SalaryResponse>(`/salaries/${id}`)
-  },
+  setBaseSalary: (data: SetBaseSalaryData) =>
+    apiService.post<ApiResponse<SalaryProfile>>('/salary/profiles', data),
 
-  // Create salary record
-  createSalary: async (salaryData: CreateSalaryData): Promise<SalaryResponse> => {
-    return apiService.post<SalaryResponse>('/salaries', salaryData)
-  },
+  getMonthReport: (month: number, year: number) =>
+    apiService.get<ApiResponse<MonthReport>>(`/salary/month?month=${month}&year=${year}`),
 
-  // Update salary record
-  updateSalary: async (id: string, salaryData: UpdateSalaryData): Promise<SalaryResponse> => {
-    return apiService.put<SalaryResponse>(`/salaries/${id}`, salaryData)
-  },
+  getEmployeeYear: (userId: string, year: number) =>
+    apiService.get<ApiResponse<EmployeeYear>>(`/salary/employee/${userId}?year=${year}`),
 
-  // Mark salary as paid
-  markSalaryAsPaid: async (id: string, notes?: string): Promise<SalaryResponse> => {
-    return apiService.patch<SalaryResponse>(`/salaries/${id}/pay`, { notes })
-  },
+  createPayout: (data: CreatePayoutData) =>
+    apiService.post<ApiResponse<SalaryPayout>>('/salary/payouts', data),
 
-  // Delete salary record
-  deleteSalary: async (id: string): Promise<MessageResponse> => {
-    return apiService.delete<MessageResponse>(`/salaries/${id}`)
-  },
+  /** Legacy rows from the old request/approve flow: hand the money over now. */
+  payPendingPayout: (id: string) =>
+    apiService.patch<ApiResponse<SalaryPayout>>(`/salary/payouts/${id}/pay`, {}),
 
-  // Get salary summary for a specific period
-  getSalarySummary: async (params: { month: number; year: number }): Promise<SalarySummaryResponse> => {
-    return apiService.get<SalarySummaryResponse>(`/salaries/summary?month=${params.month}&year=${params.year}`)
-  },
+  cancelPayout: (id: string, reason?: string) =>
+    apiService.patch<ApiResponse<SalaryPayout>>(`/salary/payouts/${id}/cancel`, { reason }),
+
+  deletePayout: (id: string) => apiService.delete<MessageResponse>(`/salary/payouts/${id}`),
+
+  processMonth: (data: ProcessMonthData) =>
+    apiService.post<ApiResponse<ProcessedMonth>>('/salary/process', data),
+
+  processAll: (month: number, year: number, notes?: string) =>
+    apiService.post<ApiResponse<ProcessAllResult>>('/salary/process-all', { month, year, notes }),
+
+  undoProcess: (id: string) => apiService.delete<MessageResponse>(`/salary/process/${id}`),
 }

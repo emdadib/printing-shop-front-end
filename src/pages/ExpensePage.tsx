@@ -1,60 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-  Card,
-  CardContent,
-  Grid,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
   TablePagination,
-  Alert,
-  CircularProgress,
+  TableRow,
   Tabs,
-  Tab,
-  IconButton,
-  Tooltip
+  TextField,
+  Tooltip,
+  Typography
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  // TrendingUp as TrendingUpIcon, // Unused import
-  TrendingDown as TrendingDownIcon,
-  Category as CategoryIcon,
-  Receipt as ReceiptIcon,
-  AttachMoney as MoneyIcon,
-  DateRange as DateRangeIcon
-} from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { apiService } from '../services/api';
 import { useSettings } from '../hooks/useSettings';
-import ExpenseTotalsBar from '../components/ExpenseTotalsBar';
+import ExpenseCategoryTotals, { ExpenseCategoryTotal } from '../components/ExpenseCategoryTotals';
 
 // Types
 interface Expense {
   id: string;
-  accountType: string;
-  type: 'DEBIT' | 'CREDIT';
   amount: number;
   description?: string;
   reference?: string;
@@ -62,55 +46,46 @@ interface Expense {
   expenseCategory?: {
     id: string;
     name: string;
-    description?: string;
   };
   date: string;
-  createdAt: string;
 }
 
 interface ExpenseCategory {
   id: string;
   name: string;
   description?: string;
-  isActive: boolean;
-  createdAt: string;
 }
 
 interface ExpenseSummary {
   totalExpenses: number;
-  monthlyExpenses: number;
-  categoryBreakdown: Array<{
-    category: string;
-    amount: number;
-    percentage: number;
-  }>;
-  monthlyTrend: Array<{
-    month: string;
-    amount: number;
-  }>;
-  topExpenses: Array<{
-    description: string;
-    amount: number;
-    category: string;
-    date: string;
-  }>;
+  categoryBreakdown: ExpenseCategoryTotal[];
 }
 
-// Validation schemas
+// Validation schemas. The server always records an expense as an EXPENSES/DEBIT
+// transaction, so the form only collects what the user actually decides.
 const expenseSchema = yup.object({
-  accountType: yup.string().required('Account type is required'),
-  type: yup.string().required('Transaction type is required'),
-  amount: yup.number().positive('Amount must be positive').required('Amount is required'),
-  description: yup.string().optional(),
-  reference: yup.string().optional(),
+  date: yup.string().required('Date is required'),
+  amount: yup
+    .number()
+    .typeError('Amount is required')
+    .positive('Amount must be greater than 0')
+    .required('Amount is required'),
   expenseCategoryId: yup.string().optional(),
-  date: yup.string().required('Date is required')
+  description: yup.string().optional(),
+  reference: yup.string().optional()
 });
 
 const categorySchema = yup.object({
-  name: yup.string().required('Category name is required'),
+  name: yup.string().required('Name is required'),
   description: yup.string().optional()
 });
+
+type ExpenseFormValues = yup.InferType<typeof expenseSchema>;
+type CategoryFormValues = yup.InferType<typeof categorySchema>;
+
+// Local calendar date as YYYY-MM-DD for <input type="date"> (toISOString would shift the day in UTC+ zones).
+const toDateInput = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 const ExpensePage: React.FC = () => {
   const { formatCurrency } = useSettings();
@@ -127,9 +102,12 @@ const ExpensePage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
-  const [dateFilter, setDateFilter] = useState<{ start: string; end: string }>({
-    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
+  const [dateFilter, setDateFilter] = useState<{ start: string; end: string }>(() => {
+    const now = new Date();
+    return {
+      start: toDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
+      end: toDateInput(now)
+    };
   });
 
   const {
@@ -137,16 +115,14 @@ const ExpensePage: React.FC = () => {
     handleSubmit: handleExpenseSubmit,
     reset: resetExpense,
     formState: { errors: expenseErrors }
-  } = useForm({
+  } = useForm<ExpenseFormValues>({
     resolver: yupResolver(expenseSchema),
     defaultValues: {
-      accountType: 'EXPENSES',
-      type: 'DEBIT',
-      amount: 0,
-      description: '',
-      reference: '',
+      date: toDateInput(new Date()),
+      amount: undefined,
       expenseCategoryId: '',
-      date: new Date().toISOString().split('T')[0]
+      description: '',
+      reference: ''
     }
   });
 
@@ -155,7 +131,7 @@ const ExpensePage: React.FC = () => {
     handleSubmit: handleCategorySubmit,
     reset: resetCategory,
     formState: { errors: categoryErrors }
-  } = useForm({
+  } = useForm<CategoryFormValues>({
     resolver: yupResolver(categorySchema),
     defaultValues: {
       name: '',
@@ -167,7 +143,9 @@ const ExpensePage: React.FC = () => {
   const fetchExpenses = async () => {
     try {
       setLoading(true);
-      const response = await apiService.get(`/accounting/expenses?startDate=${dateFilter.start}&endDate=${dateFilter.end}&page=${page + 1}&limit=${rowsPerPage}`);
+      const response = await apiService.get(
+        `/accounting/expenses?startDate=${dateFilter.start}&endDate=${dateFilter.end}&page=${page + 1}&limit=${rowsPerPage}`
+      );
       const payload = response?.success && response.data ? response.data : response;
       const list: Expense[] = Array.isArray(payload) ? payload : payload?.transactions || [];
       setExpenses(list);
@@ -199,7 +177,9 @@ const ExpensePage: React.FC = () => {
 
   const fetchSummary = async () => {
     try {
-      const response = await apiService.get(`/accounting/expense-summary?startDate=${dateFilter.start}&endDate=${dateFilter.end}`);
+      const response = await apiService.get(
+        `/accounting/expense-summary?startDate=${dateFilter.start}&endDate=${dateFilter.end}`
+      );
       if (response.success && response.data) {
         setSummary(response.data);
       } else {
@@ -219,6 +199,10 @@ const ExpensePage: React.FC = () => {
   // Handlers
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
+  };
+
+  const handleDateFilterChange = (field: 'start' | 'end', value: string) => {
+    setDateFilter((prev) => ({ ...prev, [field]: value }));
     setPage(0);
   };
 
@@ -226,17 +210,21 @@ const ExpensePage: React.FC = () => {
     if (expense) {
       setEditingExpense(expense);
       resetExpense({
-        accountType: expense.accountType,
-        type: expense.type,
-        amount: expense.amount,
-        description: expense.description,
-        reference: expense.reference || '',
+        date: expense.date.split('T')[0],
+        amount: Number(expense.amount),
         expenseCategoryId: expense.expenseCategoryId || '',
-        date: expense.date.split('T')[0]
+        description: expense.description || '',
+        reference: expense.reference || ''
       });
     } else {
       setEditingExpense(null);
-      resetExpense();
+      resetExpense({
+        date: toDateInput(new Date()),
+        amount: undefined,
+        expenseCategoryId: '',
+        description: '',
+        reference: ''
+      });
     }
     setOpenExpenseDialog(true);
   };
@@ -244,7 +232,6 @@ const ExpensePage: React.FC = () => {
   const handleCloseExpenseDialog = () => {
     setOpenExpenseDialog(false);
     setEditingExpense(null);
-    resetExpense();
   };
 
   const handleOpenCategoryDialog = (category?: ExpenseCategory) => {
@@ -256,7 +243,7 @@ const ExpensePage: React.FC = () => {
       });
     } else {
       setEditingCategory(null);
-      resetCategory();
+      resetCategory({ name: '', description: '' });
     }
     setOpenCategoryDialog(true);
   };
@@ -264,10 +251,9 @@ const ExpensePage: React.FC = () => {
   const handleCloseCategoryDialog = () => {
     setOpenCategoryDialog(false);
     setEditingCategory(null);
-    resetCategory();
   };
 
-  const onSubmitExpense = async (data: any) => {
+  const onSubmitExpense = async (data: ExpenseFormValues) => {
     try {
       if (editingExpense) {
         await apiService.put(`/accounting/expenses/${editingExpense.id}`, data);
@@ -283,7 +269,7 @@ const ExpensePage: React.FC = () => {
     }
   };
 
-  const onSubmitCategory = async (data: any) => {
+  const onSubmitCategory = async (data: CategoryFormValues) => {
     try {
       if (editingCategory) {
         await apiService.put(`/accounting/expense-categories/${editingCategory.id}`, data);
@@ -292,6 +278,7 @@ const ExpensePage: React.FC = () => {
       }
       handleCloseCategoryDialog();
       fetchCategories();
+      fetchSummary();
     } catch (error) {
       console.error('Error saving category:', error);
       setError('Failed to save category');
@@ -299,7 +286,7 @@ const ExpensePage: React.FC = () => {
   };
 
   const handleDeleteExpense = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this expense?')) {
+    if (window.confirm('Delete this expense?')) {
       try {
         await apiService.delete(`/accounting/expenses/${id}`);
         fetchExpenses();
@@ -312,10 +299,11 @@ const ExpensePage: React.FC = () => {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this category?')) {
+    if (window.confirm('Delete this category?')) {
       try {
         await apiService.delete(`/accounting/expense-categories/${id}`);
         fetchCategories();
+        fetchSummary();
       } catch (error) {
         console.error('Error deleting category:', error);
         setError('Failed to delete category');
@@ -323,337 +311,124 @@ const ExpensePage: React.FC = () => {
     }
   };
 
-  const getCategoryName = (categoryId?: string) => {
-    if (!categoryId) return 'Uncategorized';
-    const category = categories.find(c => c.id === categoryId);
-    return category?.name || 'Unknown';
+  // One row per category (zero when it has no expenses in the period), plus any
+  // breakdown entry that matches no category, e.g. "Uncategorized".
+  const buildCategoryRows = (): ExpenseCategoryTotal[] => {
+    const breakdown = summary?.categoryBreakdown ?? [];
+    const matched = new Set<ExpenseCategoryTotal>();
+    const rows: ExpenseCategoryTotal[] = categories.map((category) => {
+      const entry = breakdown.find((item) =>
+        item.categoryId !== undefined ? item.categoryId === category.id : item.category === category.name
+      );
+      if (entry) matched.add(entry);
+      return {
+        categoryId: category.id,
+        category: category.name,
+        amount: entry?.amount ?? 0,
+        count: entry?.count ?? 0
+      };
+    });
+    breakdown
+      .filter((item) => !matched.has(item))
+      .forEach((item) => rows.push({ ...item, categoryId: null }));
+    return rows;
   };
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
-
-  const renderExpenseSummary = () => (
-    <Grid container spacing={3} sx={{ mb: 3 }}>
-      <Grid item xs={12} sm={6} md={3}>
-        <Card>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="text.secondary" gutterBottom>
-                  Total Expenses
-                </Typography>
-                <Typography variant="h4" color="error.main">
-                  {formatCurrency(summary?.totalExpenses || 0)}
-                </Typography>
-              </Box>
-              <TrendingDownIcon color="error" sx={{ fontSize: 40 }} />
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
-      <Grid item xs={12} sm={6} md={3}>
-        <Card>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="text.secondary" gutterBottom>
-                  This Month
-                </Typography>
-                <Typography variant="h4" color="warning.main">
-                  {formatCurrency(summary?.monthlyExpenses || 0)}
-                </Typography>
-              </Box>
-              <DateRangeIcon color="warning" sx={{ fontSize: 40 }} />
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
-      <Grid item xs={12} sm={6} md={3}>
-        <Card>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="text.secondary" gutterBottom>
-                  Categories
-                </Typography>
-                <Typography variant="h4" color="primary.main">
-                  {categories.length}
-                </Typography>
-              </Box>
-              <CategoryIcon color="primary" sx={{ fontSize: 40 }} />
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
-      <Grid item xs={12} sm={6} md={3}>
-        <Card>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography color="text.secondary" gutterBottom>
-                  Avg. Daily
-                </Typography>
-                <Typography variant="h4" color="info.main">
-                  {formatCurrency((summary?.totalExpenses || 0) / 30)}
-                </Typography>
-              </Box>
-              <MoneyIcon color="info" sx={{ fontSize: 40 }} />
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
-  );
-
-  const renderExpenseCharts = () => (
-    <Grid container spacing={3} sx={{ mb: 3 }}>
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Expense Categories
-            </Typography>
-            {summary?.categoryBreakdown && summary.categoryBreakdown.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={summary.categoryBreakdown}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percentage }) => `${name} ${percentage}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="amount"
-                  >
-                    {summary.categoryBreakdown.map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip formatter={(value) => [formatCurrency(Number(value)), 'Amount']} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <Box display="flex" justifyContent="center" alignItems="center" height={300}>
-                <Typography color="text.secondary">No expense data available</Typography>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      </Grid>
-
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Monthly Trend
-            </Typography>
-            {summary?.monthlyTrend && summary.monthlyTrend.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={summary.monthlyTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <RechartsTooltip formatter={(value) => [formatCurrency(Number(value)), 'Expenses']} />
-                  <Line type="monotone" dataKey="amount" stroke="#ff6b6b" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <Box display="flex" justifyContent="center" alignItems="center" height={300}>
-                <Typography color="text.secondary">No trend data available</Typography>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
-  );
-
-  const renderExpenseList = () => (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h6">Expense Transactions</Typography>
-        <Box display="flex" gap={2}>
-          <TextField
-            label="Start Date"
-            type="date"
-            value={dateFilter.start}
-            onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-          />
-          <TextField
-            label="End Date"
-            type="date"
-            value={dateFilter.end}
-            onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-          />
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenExpenseDialog()}
-          >
-            Add Expense
-          </Button>
-        </Box>
-      </Box>
-
-      {/* Filtered totals: the grand total is always visible, followed by per-category totals */}
-      <ExpenseTotalsBar
-        total={summary?.totalExpenses ?? 0}
-        categoryTotals={summary?.categoryBreakdown ?? []}
-        startDate={dateFilter.start}
-        endDate={dateFilter.end}
-        formatCurrency={formatCurrency}
-      />
-
-      <TableContainer component={Paper}>
+  const renderExpenseTable = () => (
+    <>
+      <TableContainer>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>Date</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Category</TableCell>
-              <TableCell>Reference</TableCell>
               <TableCell align="right">Amount</TableCell>
-              <TableCell>Actions</TableCell>
+              <TableCell align="right" />
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">
-                  <CircularProgress />
+                <TableCell colSpan={5} align="center">
+                  <CircularProgress size={24} />
                 </TableCell>
               </TableRow>
-            ) : expenses.length > 0 ? (
+            ) : expenses.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} align="center">
+                  <Typography color="text.secondary">No expenses in this period</Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
               expenses.map((expense) => (
-                <TableRow key={expense.id}>
+                <TableRow key={expense.id} hover>
                   <TableCell>{new Date(expense.date).toLocaleDateString()}</TableCell>
-                  <TableCell>{expense.description}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={getCategoryName(expense.expenseCategoryId)}
-                      size="small"
-                      color="secondary"
-                    />
-                  </TableCell>
-                  <TableCell>{expense.reference || '-'}</TableCell>
-                  <TableCell align="right">
-                    <Typography color="error.main" fontWeight="bold">
-                      {formatCurrency(expense.amount)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
+                  <TableCell>{expense.description || '-'}</TableCell>
+                  <TableCell>{expense.expenseCategory?.name || 'Uncategorized'}</TableCell>
+                  <TableCell align="right">{formatCurrency(Number(expense.amount))}</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                     <Tooltip title="Edit">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenExpenseDialog(expense)}
-                      >
-                        <EditIcon />
+                      <IconButton size="small" aria-label="Edit expense" onClick={() => handleOpenExpenseDialog(expense)}>
+                        <EditIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteExpense(expense.id)}
-                      >
-                        <DeleteIcon />
+                      <IconButton size="small" aria-label="Delete expense" onClick={() => handleDeleteExpense(expense.id)}>
+                        <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   </TableCell>
                 </TableRow>
               ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={6} align="center">
-                  <Typography color="text.secondary">No expenses found</Typography>
-                </TableCell>
-              </TableRow>
             )}
           </TableBody>
         </Table>
-        <TablePagination
-          rowsPerPageOptions={[10, 25, 50]}
-          component="div"
-          count={totalCount}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          onRowsPerPageChange={(e) => {
-            setRowsPerPage(parseInt(e.target.value, 10));
-            setPage(0);
-          }}
-        />
       </TableContainer>
-    </Box>
+      <TablePagination
+        rowsPerPageOptions={[10, 25, 50]}
+        component="div"
+        count={totalCount}
+        rowsPerPage={rowsPerPage}
+        page={page}
+        onPageChange={(_, newPage) => setPage(newPage)}
+        onRowsPerPageChange={(e) => {
+          setRowsPerPage(parseInt(e.target.value, 10));
+          setPage(0);
+        }}
+      />
+    </>
   );
 
-  const renderCategoryManagement = () => (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h6">Expense Categories</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenCategoryDialog()}
-        >
-          Add Category
-        </Button>
-      </Box>
-
-      <Grid container spacing={2}>
-        {categories.map((category) => (
-          <Grid item xs={12} sm={6} md={4} key={category.id}>
-            <Card>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      {category.name}
-                    </Typography>
-                    <Typography color="text.secondary" variant="body2">
-                      {category.description || 'No description'}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Tooltip title="Edit">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenCategoryDialog(category)}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteCategory(category.id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-    </Box>
+  const renderCategoryTable = () => (
+    <ExpenseCategoryTotals
+      rows={buildCategoryRows()}
+      total={summary?.totalExpenses ?? 0}
+      formatCurrency={formatCurrency}
+      emptyMessage="No categories yet"
+      onEdit={(categoryId) => {
+        const category = categories.find((c) => c.id === categoryId);
+        if (category) handleOpenCategoryDialog(category);
+      }}
+      onDelete={handleDeleteCategory}
+    />
   );
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Expense Management
-      </Typography>
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      {/* Title and the primary action for the active tab */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+        <Typography variant="h5">Expenses</Typography>
+        {activeTab === 0 ? (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenExpenseDialog()}>
+            Add Expense
+          </Button>
+        ) : (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenCategoryDialog()}>
+            Add Category
+          </Button>
+        )}
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -661,45 +436,58 @@ const ExpensePage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Summary Cards */}
-      {renderExpenseSummary()}
-
-      {/* Charts */}
-      {renderExpenseCharts()}
-
-      {/* Tabs */}
-      <Paper sx={{ width: '100%' }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab icon={<ReceiptIcon />} label="Expenses" />
-          <Tab icon={<CategoryIcon />} label="Categories" />
-        </Tabs>
-      </Paper>
-
-      <Box sx={{ mt: 3 }}>
-        {activeTab === 0 && renderExpenseList()}
-        {activeTab === 1 && renderCategoryManagement()}
+      {/* Period filter and the total for that period; both tabs follow it */}
+      <Box display="flex" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+        <TextField
+          label="From"
+          type="date"
+          size="small"
+          value={dateFilter.start}
+          onChange={(e) => handleDateFilterChange('start', e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+        <TextField
+          label="To"
+          type="date"
+          size="small"
+          value={dateFilter.end}
+          onChange={(e) => handleDateFilterChange('end', e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+        <Typography sx={{ ml: { sm: 'auto' } }}>
+          Total: <strong>{formatCurrency(summary?.totalExpenses ?? 0)}</strong>
+        </Typography>
       </Box>
 
+      <Paper>
+        <Tabs value={activeTab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tab label="Expenses" />
+          <Tab label="Categories" />
+        </Tabs>
+        {activeTab === 0 ? renderExpenseTable() : renderCategoryTable()}
+      </Paper>
+
       {/* Expense Dialog */}
-      <Dialog open={openExpenseDialog} onClose={handleCloseExpenseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingExpense ? 'Edit Expense' : 'Add New Expense'}
-        </DialogTitle>
-        <form onSubmit={handleExpenseSubmit(onSubmitExpense)}>
+      <Dialog open={openExpenseDialog} onClose={handleCloseExpenseDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>{editingExpense ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
+        <form onSubmit={handleExpenseSubmit(onSubmitExpense)} noValidate>
           <DialogContent>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <Controller
-                  name="type"
+                  name="date"
                   control={expenseControl}
                   render={({ field }) => (
-                    <FormControl fullWidth error={!!expenseErrors.type}>
-                      <InputLabel>Transaction Type *</InputLabel>
-                      <Select {...field} label="Transaction Type *">
-                        <MenuItem value="DEBIT">Expense (Debit)</MenuItem>
-                        <MenuItem value="CREDIT">Refund (Credit)</MenuItem>
-                      </Select>
-                    </FormControl>
+                    <TextField
+                      {...field}
+                      label="Date"
+                      type="date"
+                      required
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      error={!!expenseErrors.date}
+                      helperText={expenseErrors.date?.message}
+                    />
                   )}
                 />
               </Grid>
@@ -710,9 +498,12 @@ const ExpensePage: React.FC = () => {
                   render={({ field }) => (
                     <TextField
                       {...field}
-                      label="Amount *"
+                      value={field.value ?? ''}
+                      label="Amount"
                       type="number"
+                      required
                       fullWidth
+                      inputProps={{ min: 0, step: '0.01', inputMode: 'decimal' }}
                       error={!!expenseErrors.amount}
                       helperText={expenseErrors.amount?.message}
                     />
@@ -721,27 +512,12 @@ const ExpensePage: React.FC = () => {
               </Grid>
               <Grid item xs={12}>
                 <Controller
-                  name="description"
-                  control={expenseControl}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Description"
-                      fullWidth
-                      error={!!expenseErrors.description}
-                      helperText={expenseErrors.description?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
                   name="expenseCategoryId"
                   control={expenseControl}
                   render={({ field }) => (
                     <FormControl fullWidth>
-                      <InputLabel>Category</InputLabel>
-                      <Select {...field} label="Category">
+                      <InputLabel id="expense-category-label">Category</InputLabel>
+                      <Select {...field} value={field.value ?? ''} labelId="expense-category-label" label="Category">
                         <MenuItem value="">Uncategorized</MenuItem>
                         {categories.map((category) => (
                           <MenuItem key={category.id} value={category.id}>
@@ -753,34 +529,18 @@ const ExpensePage: React.FC = () => {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12}>
                 <Controller
-                  name="reference"
+                  name="description"
                   control={expenseControl}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Reference"
-                      fullWidth
-                    />
-                  )}
+                  render={({ field }) => <TextField {...field} label="Description" fullWidth />}
                 />
               </Grid>
               <Grid item xs={12}>
                 <Controller
-                  name="date"
+                  name="reference"
                   control={expenseControl}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Date *"
-                      type="date"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      error={!!expenseErrors.date}
-                      helperText={expenseErrors.date?.message}
-                    />
-                  )}
+                  render={({ field }) => <TextField {...field} label="Reference (optional)" fullWidth />}
                 />
               </Grid>
             </Grid>
@@ -788,18 +548,16 @@ const ExpensePage: React.FC = () => {
           <DialogActions>
             <Button onClick={handleCloseExpenseDialog}>Cancel</Button>
             <Button type="submit" variant="contained">
-              {editingExpense ? 'Update' : 'Add'} Expense
+              Save
             </Button>
           </DialogActions>
         </form>
       </Dialog>
 
       {/* Category Dialog */}
-      <Dialog open={openCategoryDialog} onClose={handleCloseCategoryDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingCategory ? 'Edit Category' : 'Add New Category'}
-        </DialogTitle>
-        <form onSubmit={handleCategorySubmit(onSubmitCategory)}>
+      <Dialog open={openCategoryDialog} onClose={handleCloseCategoryDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>{editingCategory ? 'Edit Category' : 'Add Category'}</DialogTitle>
+        <form onSubmit={handleCategorySubmit(onSubmitCategory)} noValidate>
           <DialogContent>
             <Grid container spacing={2}>
               <Grid item xs={12}>
@@ -809,7 +567,8 @@ const ExpensePage: React.FC = () => {
                   render={({ field }) => (
                     <TextField
                       {...field}
-                      label="Category Name *"
+                      label="Name"
+                      required
                       fullWidth
                       error={!!categoryErrors.name}
                       helperText={categoryErrors.name?.message}
@@ -822,13 +581,7 @@ const ExpensePage: React.FC = () => {
                   name="description"
                   control={categoryControl}
                   render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Description"
-                      fullWidth
-                      multiline
-                      rows={3}
-                    />
+                    <TextField {...field} label="Description (optional)" fullWidth multiline rows={2} />
                   )}
                 />
               </Grid>
@@ -837,7 +590,7 @@ const ExpensePage: React.FC = () => {
           <DialogActions>
             <Button onClick={handleCloseCategoryDialog}>Cancel</Button>
             <Button type="submit" variant="contained">
-              {editingCategory ? 'Update' : 'Add'} Category
+              Save
             </Button>
           </DialogActions>
         </form>

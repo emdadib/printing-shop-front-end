@@ -57,6 +57,7 @@ import * as yup from 'yup';
 import { apiService } from '@/services/api';
 import { useSettings } from '@/hooks/useSettings';
 import OrderReceipt from '@/components/OrderReceipt';
+import { getOrderCreatorName, OrderCreator } from '@/utils/orderCreator';
 
 interface Order {
   id: string;
@@ -74,6 +75,8 @@ interface Order {
   discountAmount?: number | string; // Can be Decimal from database
   total: number | string; // Can be Decimal from database
   createdAt: string;
+  /** Employee who created the order (safe subset returned by the API). */
+  user?: OrderCreator | null;
   items?: OrderItem[];
   notes?: string;
   dueDate?: string;
@@ -877,7 +880,8 @@ const OrdersPage: React.FC = () => {
     const matchesSearch = 
       order.orderNumber.toLowerCase().includes(searchLower) ||
       `${order.customer?.firstName || 'Unknown'} ${order.customer?.lastName || 'Customer'}`.toLowerCase().includes(searchLower) ||
-      (order.customer?.email || '').toLowerCase().includes(searchLower);
+      (order.customer?.email || '').toLowerCase().includes(searchLower) ||
+      getOrderCreatorName(order.user, '').toLowerCase().includes(searchLower);
     
     return matchesSearch;
   });
@@ -1030,19 +1034,20 @@ const OrdersPage: React.FC = () => {
               <TableCell>Status</TableCell>
               <TableCell>Total</TableCell>
               <TableCell>Created</TableCell>
+              <TableCell>Created By</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   <CircularProgress />
                 </TableCell>
               </TableRow>
             ) : filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   <Typography variant="body2" color="text.secondary">
                     No orders found
                   </Typography>
@@ -1103,6 +1108,7 @@ const OrdersPage: React.FC = () => {
                 <TableCell>
                   {new Date(order.createdAt).toLocaleDateString()}
                 </TableCell>
+                <TableCell>{getOrderCreatorName(order.user)}</TableCell>
                  <TableCell>
                   <Tooltip title="View Details">
                     <IconButton 
@@ -1338,6 +1344,7 @@ const OrdersPage: React.FC = () => {
                   );
                 })()}
                 <Typography><strong>Created:</strong> {new Date(selectedOrder.createdAt).toLocaleString()}</Typography>
+                <Typography><strong>Created by:</strong> {getOrderCreatorName(selectedOrder.user)}</Typography>
                 
                 {/* Status Update Section */}
                 <Box mt={2}>

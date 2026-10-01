@@ -81,6 +81,22 @@ const orderSchema = yup.object({
 // Sentinel id for the synthetic "Add ... as new customer" option in the customer search
 const CREATE_CUSTOMER_OPTION_ID = '__create_customer__';
 
+// The walk-in option must be a single shared instance. MUI Autocomplete resets the
+// typed text to the selected option's label whenever the `value` object identity
+// changes, so rebuilding this object on every render made the search box snap back
+// to "Walk-in Customer" on each keystroke.
+const WALK_IN_CUSTOMER_OPTION: Customer = {
+  id: 'walk-in',
+  firstName: 'Walk-in',
+  lastName: 'Customer',
+  email: '',
+  phone: '',
+};
+
+// Labels the walk-in option should match when typed (word-prefix match, so it does not
+// show up for every search that merely contains one of its letters).
+const WALK_IN_SEARCH_WORDS = ['walk-in', 'walk in', 'walkin', 'customer'];
+
 const POSOrderPage: React.FC = () => {
   const navigate = useNavigate();
   const { formatCurrency, getSettingValue } = useSettings();
@@ -122,6 +138,8 @@ const POSOrderPage: React.FC = () => {
   });
 
   const selectedCustomerId = watch('customerId');
+
+  const customerOptions = useMemo(() => [WALK_IN_CUSTOMER_OPTION, ...customers], [customers]);
 
   const openQuickCustomer = () => setQuickCustomerOpen(true);
 
@@ -562,10 +580,7 @@ const POSOrderPage: React.FC = () => {
                           setCustomerInputValue(value);
                         }
                       }}
-                      options={[
-                        { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
-                        ...customers
-                      ]}
+                      options={customerOptions}
                       getOptionLabel={(option) => {
                         if (option.id === 'walk-in') {
                           return '🚶 Walk-in Customer';
@@ -580,7 +595,10 @@ const POSOrderPage: React.FC = () => {
                         const searchTerm = trimmedInput.toLowerCase();
                         const filtered = options.filter((option) => {
                           if (option.id === 'walk-in') {
-                            return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
+                            return (
+                              searchTerm === '' ||
+                              WALK_IN_SEARCH_WORDS.some((word) => word.startsWith(searchTerm))
+                            );
                           }
                           return (
                             option.firstName.toLowerCase().includes(searchTerm) ||
@@ -605,7 +623,7 @@ const POSOrderPage: React.FC = () => {
                       }}
                       value={
                         field.value === 'walk-in'
-                          ? { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' }
+                          ? WALK_IN_CUSTOMER_OPTION
                           : customers.find((c) => c.id === field.value) || null
                       }
                       onChange={(_, newValue) => {

@@ -29,7 +29,7 @@ import WarrantiesPage from '@/pages/WarrantiesPage'
 import SettingsPage from '@/pages/SettingsPage'
 import UserProfilePage from '@/pages/UserProfilePage'
 import PhotocopyPage from '@/pages/PhotocopyPage'
-import CombinedSalaryPage from '@/pages/CombinedSalaryPage'
+import SalaryPage from '@/pages/SalaryPage'
 import AttendancePage from '@/pages/AttendancePage'
 
 import { useAuth } from '@/hooks/useAuth'
@@ -121,8 +121,9 @@ const App: React.FC = () => {
                 <Route path="/expenses" element={<ExpensePage />} />
                 <Route path="/users" element={<UserManagementPage />} />
                 <Route path="/user-management" element={<UserManagementPage />} />
-                <Route path="/salary-management" element={<CombinedSalaryPage />} />
-                <Route path="/salary-advances" element={<CombinedSalaryPage />} />
+                <Route path="/salary" element={<SalaryPage />} />
+                <Route path="/salary-management" element={<SalaryPage />} />
+                <Route path="/salary-advances" element={<SalaryPage />} />
                 <Route path="/permission-management" element={<PermissionManagementPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/warranties" element={<WarrantiesPage />} />
@@ -140,4 +141,4 @@ const App: React.FC = () => {
   )
 }
 
-export default App 
+export default App
