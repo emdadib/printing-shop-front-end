@@ -30,30 +30,23 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   Menu,
   Tooltip,
   Chip,
   Snackbar,
-  Autocomplete,
   TablePagination,
 } from '@mui/material';
 import {
   Add,
   Delete,
   Search,
-  Remove,
   Visibility,
   MoreVert,
   Payment,
   Print,
   CheckCircle,
-  PointOfSale,
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useForm, Controller } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import * as yup from 'yup';
 import { apiService } from '@/services/api';
 import { useSettings } from '@/hooks/useSettings';
 import OrderReceipt from '@/components/OrderReceipt';
@@ -98,14 +91,6 @@ interface Product {
   };
 }
 
-interface Customer {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string | null;
-  phone: string | null;
-}
-
 interface OrderItem {
   productId: string;
   quantity: number;
@@ -122,21 +107,11 @@ interface OrderItem {
   product?: Product;
 }
 
-const orderSchema = yup.object({
-  customerId: yup.string().required('Customer is required'),
-  type: yup.string().required('Order type is required'),
-  notes: yup.string()
-});
-
-
-
 const OrdersPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { formatCurrency, getSettingValue } = useSettings();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{
@@ -151,11 +126,6 @@ const OrdersPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalOrders, setTotalOrders] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [itemQuantity, setItemQuantity] = useState(1);
   
   // New state for order management
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -180,41 +150,6 @@ const OrdersPage: React.FC = () => {
   // Print receipt state
   const [openReceiptDialog, setOpenReceiptDialog] = useState(false);
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<Order | null>(null);
-
-  // Serial number input state
-  const [openSerialDialog, setOpenSerialDialog] = useState(false);
-  const [selectedItemForSerial, setSelectedItemForSerial] = useState<OrderItem | null>(null);
-  const [serialNumbersInput, setSerialNumbersInput] = useState('');
-
-  // Discount state
-  const [discountAmount, setDiscountAmount] = useState(0);
-  const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENTAGE'>('AMOUNT');
-
-  const WALK_IN_MAX_TOTAL = 1000;
-
-  const {
-    control,
-    handleSubmit,
-    reset,
-    watch,
-    formState: { errors }
-  } = useForm({
-    resolver: yupResolver(orderSchema),
-    defaultValues: {
-      customerId: '',
-      type: 'SALE',
-      notes: ''
-    }
-  });
-
-  const selectedCustomerId = watch('customerId');
-
-
-
-  useEffect(() => {
-    fetchProducts();
-    fetchCustomers();
-  }, []);
 
   // Reset to page 0 when search term changes (before fetching)
   useEffect(() => {
@@ -269,22 +204,6 @@ const OrdersPage: React.FC = () => {
       return 0;
     }
   };
-
-  // Auto-populate payment amount when order total changes
-  useEffect(() => {
-    const total = calculateOrderTotal();
-    if (total > 0 && paymentAmount === 0) {
-      setPaymentAmount(total);
-    }
-  }, [orderItems]);
-
-  // Update payment amount when discount changes
-  useEffect(() => {
-    const total = calculateOrderTotal();
-    if (total > 0) {
-      setPaymentAmount(total);
-    }
-  }, [discountAmount, discountType, orderItems]);
 
   const fetchOrders = async () => {
     try {
@@ -349,61 +268,6 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const fetchProducts = async () => {
-    try {
-      // Fetch all active products with high limit to ensure we get all products
-      const response = await apiService.get('/products?limit=1000&isActive=true');
-      if (response.success && Array.isArray(response.data)) {
-        setProducts(response.data);
-      } else if (Array.isArray(response)) {
-        setProducts(response);
-      } else {
-        setProducts([]);
-      }
-    } catch (err) {
-      console.error('Products fetch error:', err);
-    }
-  };
-
-  const fetchCustomers = async () => {
-    try {
-      const response = await apiService.get('/customers');
-      if (response.success && Array.isArray(response.data)) {
-        setCustomers(response.data);
-      } else if (Array.isArray(response)) {
-        setCustomers(response);
-      } else {
-        setCustomers([]);
-      }
-    } catch (err) {
-      console.error('Customers fetch error:', err);
-    }
-  };
-
-
-
-
-
-  const handleOpenDialog = () => {
-    setOpenDialog(true);
-    setOrderItems([]);
-    reset();
-    setPaymentAmount(0);
-    setPaymentMethod('CASH');
-  };
-
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-    setOrderItems([]);
-    setSelectedProduct(null);
-    setItemQuantity(1);
-    reset();
-    setPaymentAmount(0);
-    setPaymentMethod('CASH');
-    setDiscountAmount(0);
-    setDiscountType('AMOUNT');
-  };
-
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
     setSnackbar({ open: true, message, severity });
   };
@@ -433,7 +297,6 @@ const OrdersPage: React.FC = () => {
   };
 
 
-
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, order: Order) => {
     setAnchorEl(event.currentTarget);
     setSelectedOrderForMenu(order);
@@ -443,283 +306,6 @@ const OrdersPage: React.FC = () => {
     setAnchorEl(null);
     setSelectedOrderForMenu(null);
   };
-
-  // Calculate warranty dates for a product
-  const calculateWarrantyDates = (product: Product) => {
-    if (!product.hasWarranty || !product.warrantyPeriod) {
-      return { warrantyStartDate: null, warrantyEndDate: null };
-    }
-
-    const startDate = new Date(); // Warranty starts from order completion
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + product.warrantyPeriod);
-
-    return {
-      warrantyStartDate: startDate.toISOString(),
-      warrantyEndDate: endDate.toISOString()
-    };
-  };
-
-  const addItemToOrder = () => {
-    if (!selectedProduct || itemQuantity <= 0) return;
-
-    const existingItem = orderItems.find(item => item.productId === selectedProduct.id);
-    if (existingItem) {
-      setOrderItems(orderItems.map(item => 
-        item.productId === selectedProduct.id 
-          ? { ...item, quantity: item.quantity + itemQuantity }
-          : item
-      ));
-    } else {
-      const warrantyDates = calculateWarrantyDates(selectedProduct);
-      const newItem: OrderItem = {
-        productId: selectedProduct.id,
-        quantity: itemQuantity,
-        unitPrice: selectedProduct.basePrice,
-        costPrice: selectedProduct.baseCostPrice,
-        discount: 0,
-        taxAmount: 0,
-        total: selectedProduct.basePrice * itemQuantity,
-        notes: '',
-        specifications: {},
-        serialNumbers: '', // Will be filled when order is completed
-        warrantyStartDate: warrantyDates.warrantyStartDate || undefined,
-        warrantyEndDate: warrantyDates.warrantyEndDate || undefined
-      };
-      setOrderItems([...orderItems, newItem]);
-    }
-    setSelectedProduct(null);
-    setItemQuantity(1);
-  };
-
-  const removeItemFromOrder = (productId: string) => {
-    setOrderItems(orderItems.filter(item => item.productId !== productId));
-  };
-
-  const updateItemQuantity = (productId: string, quantity: number) => {
-    setOrderItems(orderItems.map(item => 
-      item.productId === productId 
-        ? { ...item, quantity, total: item.unitPrice * quantity }
-        : item
-    ));
-  };
-
-  const handleSerialNumberInput = (item: OrderItem) => {
-    setSelectedItemForSerial(item);
-    setSerialNumbersInput(item.serialNumbers || '');
-    setOpenSerialDialog(true);
-  };
-
-  const handleSerialNumberSave = () => {
-    if (selectedItemForSerial) {
-      setOrderItems(orderItems.map(item => 
-        item.productId === selectedItemForSerial.productId 
-          ? { ...item, serialNumbers: serialNumbersInput }
-          : item
-      ));
-    }
-    setOpenSerialDialog(false);
-    setSelectedItemForSerial(null);
-    setSerialNumbersInput('');
-  };
-
-  const handleSerialNumberCancel = () => {
-    setOpenSerialDialog(false);
-    setSelectedItemForSerial(null);
-    setSerialNumbersInput('');
-  };
-
-  const calculateOrderTotal = () => {
-    const subtotal = orderItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-    
-    // Apply discount
-    if (discountAmount > 0) {
-      if (discountType === 'PERCENTAGE') {
-        return subtotal * (1 - discountAmount / 100);
-      } else {
-        return Math.max(0, subtotal - discountAmount);
-      }
-    }
-    
-    return subtotal;
-  };
-
-  const calculateDiscountAmount = () => {
-    const subtotal = orderItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-    
-    if (discountAmount > 0) {
-      if (discountType === 'PERCENTAGE') {
-        return subtotal * (discountAmount / 100);
-      } else {
-        return Math.min(discountAmount, subtotal);
-      }
-    }
-    
-    return 0;
-  };
-
-  const onSubmit = async (data: any) => {
-    // Prevent double submission
-    if (submitting) {
-      return;
-    }
-
-    if (orderItems.length === 0) {
-      setError('Please add at least one item to the order');
-      return;
-    }
-
-    if (data.customerId === 'walk-in' && calculateOrderTotal() > WALK_IN_MAX_TOTAL) {
-      setError(
-        `Orders above ${formatCurrency(WALK_IN_MAX_TOTAL)} require a registered customer — walk-in is not allowed.`
-      );
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      const orderData = {
-        ...data,
-        items: orderItems.map(item => ({
-          ...item,
-          total: item.unitPrice * item.quantity
-        })),
-        discountAmount: discountAmount > 0 ? discountAmount : undefined,
-        discountType: discountAmount > 0 ? discountType : undefined
-      };
-
-      // Create the order
-      const orderResponse = await apiService.post('/orders', orderData);
-      
-      // Handle response structure: apiService returns response.data, which is { success: true, data: order }
-      // Check if response has success flag
-      if (orderResponse && typeof orderResponse === 'object' && 'success' in orderResponse) {
-        if (!orderResponse.success) {
-          const errorMsg = orderResponse.message || 'Failed to create order';
-          setError(errorMsg);
-          console.error('Order creation failed:', orderResponse);
-          return;
-        }
-      }
-
-      // Extract order data from response
-      const createdOrder = orderResponse?.data || orderResponse;
-
-      if (!createdOrder || !createdOrder.id) {
-        console.error('Invalid order response:', orderResponse);
-        setError('Order created but received invalid response. Please refresh the page.');
-        return;
-      }
-
-      console.log('Order created successfully:', createdOrder);
-
-      // Track if payment was successful
-      let paymentSuccess = true;
-      
-      // If payment amount is provided, create payment
-      if (paymentAmount > 0) {
-        try {
-          // Get the actual customer ID from the created order (not from data.customerId which might be 'walk-in')
-          const actualCustomerId = createdOrder.customerId || createdOrder.customer?.id;
-          
-          if (!actualCustomerId) {
-            console.error('No customer ID found in created order:', createdOrder);
-            setError('Order created successfully, but payment failed: Customer ID not found. Please process payment separately.');
-            paymentSuccess = false;
-          } else {
-            const paymentData = {
-              customerId: actualCustomerId,
-              orderId: createdOrder.id,
-              amount: paymentAmount,
-              paymentMethod,
-              notes: `Payment for order ${createdOrder.orderNumber || createdOrder.id}`
-            };
-
-            console.log('Creating payment with data:', paymentData);
-            const paymentResponse = await apiService.post('/payments', paymentData);
-            
-            // Check if payment was successful
-            if (paymentResponse && typeof paymentResponse === 'object') {
-              if ('success' in paymentResponse && !paymentResponse.success) {
-                const errorMsg = paymentResponse.message || 'Payment creation failed';
-                setError(`Order created successfully, but payment failed: ${errorMsg}. Please process payment separately.`);
-                paymentSuccess = false;
-                console.error('Payment creation failed:', paymentResponse);
-              } else {
-                console.log('Payment created successfully:', paymentResponse);
-                // Refresh due amount for this specific order after payment creation
-                setTimeout(() => {
-                  fetchDueAmountForOrder(createdOrder.id);
-                }, 1000);
-              }
-            } else {
-              // Assume success if response structure is unexpected
-              console.log('Payment created successfully (unexpected response format):', paymentResponse);
-              setTimeout(() => {
-                fetchDueAmountForOrder(createdOrder.id);
-              }, 1000);
-            }
-          }
-        } catch (paymentError: any) {
-          console.error('Payment creation failed:', paymentError);
-          const errorMessage = paymentError?.response?.data?.message || paymentError?.message || 'Unknown error';
-          setError(`Order created successfully, but payment failed: ${errorMessage}. Please process payment separately.`);
-          paymentSuccess = false;
-          // Don't return here - allow order creation to complete
-        }
-      }
-
-      // Refresh orders and due amounts
-      try {
-        await fetchOrders();
-      } catch (fetchError) {
-        console.error('Error fetching orders after creation:', fetchError);
-        // Don't show error to user - order was created successfully
-      }
-      
-      // Close dialog - order was created successfully
-      handleCloseDialog();
-      
-      // Show appropriate success/error messages
-      if (paymentSuccess || paymentAmount === 0) {
-        setError(null);
-        // Show success message
-        if (paymentAmount > 0) {
-          showSnackbar('Order and payment created successfully!', 'success');
-        } else {
-          showSnackbar('Order created successfully!', 'success');
-        }
-      } else {
-        // Payment failed but order succeeded
-        showSnackbar('Order created successfully, but payment failed. Please process payment separately.', 'warning');
-      }
-      
-      // Refresh due amount for the created order after order/payment creation
-      if (createdOrder?.id) {
-        setTimeout(() => {
-          fetchDueAmountForOrder(createdOrder.id).catch(err => {
-            console.error('Error fetching due amount:', err);
-          });
-        }, 1000);
-      }
-    } catch (err: any) {
-      console.error('Order creation error:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to create order';
-      setError(errorMessage);
-      
-      // Check if order might have been created despite error
-      if (err?.response?.status === 201 || err?.response?.status === 200) {
-        // Order was created, just refresh
-        fetchOrders();
-        // Note: We can't fetch due amount here as we don't have the order ID
-        // It will be fetched when the order list is refreshed
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-
 
   const handleDeleteOrder = async (orderId: string) => {
     if (!window.confirm('Are you sure you want to delete this order?')) return;
@@ -914,17 +500,9 @@ const OrdersPage: React.FC = () => {
             Due Amount
           </Button>
           <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<PointOfSale />}
-            onClick={() => navigate('/pos')}
-          >
-            POS Mode
-          </Button>
-          <Button
             variant="contained"
             startIcon={<Add />}
-            onClick={handleOpenDialog}
+            onClick={() => navigate('/pos')}
           >
             New Order
           </Button>
@@ -1465,373 +1043,6 @@ const OrdersPage: React.FC = () => {
       </Dialog>
 
 
-
-      {/* Create Order Dialog */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>Create New Order</DialogTitle>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <DialogContent>
-            <Grid container spacing={3}>
-              {/* Order Details */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>Order Details</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Controller
-                      name="customerId"
-                      control={control}
-                      render={({ field }) => (
-                        <Autocomplete
-                          options={[
-                            { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' },
-                            ...customers
-                          ]}
-                          getOptionLabel={(option) => {
-                            if (option.id === 'walk-in') {
-                              return '🚶 Walk-in Customer (One-time)';
-                            }
-                            return `${option.firstName} ${option.lastName}${option.email ? ` (${option.email})` : ''}${option.phone ? ` - ${option.phone}` : ''}`;
-                          }}
-                          filterOptions={(options, { inputValue }) => {
-                            const searchTerm = inputValue.toLowerCase();
-                            return options.filter((option) => {
-                              if (option.id === 'walk-in') {
-                                return 'walk-in customer'.includes(searchTerm) || searchTerm === '';
-                              }
-                              return (
-                                option.firstName.toLowerCase().includes(searchTerm) ||
-                                option.lastName.toLowerCase().includes(searchTerm) ||
-                                (option.email ?? '').toLowerCase().includes(searchTerm) ||
-                                (option.phone ?? '').toLowerCase().includes(searchTerm) ||
-                                `${option.firstName} ${option.lastName}`.toLowerCase().includes(searchTerm)
-                              );
-                            });
-                          }}
-                          value={
-                            field.value === 'walk-in' || !field.value
-                              ? { id: 'walk-in', firstName: 'Walk-in', lastName: 'Customer', email: '', phone: '' }
-                              : customers.find((c) => c.id === field.value) || null
-                          }
-                          onChange={(_, newValue) => {
-                            field.onChange(newValue ? newValue.id : 'walk-in');
-                          }}
-                          renderInput={(params) => {
-                            const overWalkInLimit =
-                              (selectedCustomerId === 'walk-in' || !selectedCustomerId) &&
-                              calculateOrderTotal() > WALK_IN_MAX_TOTAL;
-                            return (
-                              <TextField
-                                {...params}
-                                label="Customer"
-                                error={!!errors.customerId || overWalkInLimit}
-                                helperText={
-                                  errors.customerId?.message ||
-                                  (overWalkInLimit
-                                    ? `Walk-in not allowed above ${formatCurrency(WALK_IN_MAX_TOTAL)} — select a customer.`
-                                    : undefined)
-                                }
-                                placeholder="Search by name, email, or phone..."
-                              />
-                            );
-                          }}
-                          noOptionsText="No customers found"
-                        />
-                      )}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Controller
-                      name="type"
-                      control={control}
-                      render={({ field }) => (
-                        <FormControl fullWidth error={!!errors.type}>
-                          <InputLabel>Order Type</InputLabel>
-                                                     <Select {...field} label="Order Type">
-                             <MenuItem value="SALE">Sale</MenuItem>
-                             <MenuItem value="DIRECT_SALE">Direct Sale (Instant Complete)</MenuItem>
-                             <MenuItem value="CUSTOM_ORDER">Custom Order</MenuItem>
-                             <MenuItem value="RUSH_ORDER">Rush Order</MenuItem>
-                             <MenuItem value="REPRINT">Reprint</MenuItem>
-                           </Select>
-                        </FormControl>
-                      )}
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={12}>
-                    <Controller
-                      name="notes"
-                      control={control}
-                      render={({ field }) => (
-                        <TextField
-                          {...field}
-                          fullWidth
-                          label="Notes"
-                          multiline
-                          rows={2}
-                        />
-                      )}
-                    />
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Divider />
-              </Grid>
-
-              {/* Add Items */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>Add Items</Typography>
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>Product</InputLabel>
-                      <Select
-                        value={selectedProduct?.id || ''}
-                        onChange={(e) => {
-                          const product = products.find(p => p.id === e.target.value);
-                          setSelectedProduct(product || null);
-                        }}
-                        label="Product"
-                      >
-                        {products.map((product) => (
-                          <MenuItem key={product.id} value={product.id}>
-                            {product.name} ({product.sku}) - {formatCurrency(product.basePrice)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      fullWidth
-                      label="Quantity"
-                      type="number"
-                      value={itemQuantity}
-                      onChange={(e) => setItemQuantity(Number(e.target.value))}
-                      inputProps={{ min: 1 }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      onClick={addItemToOrder}
-                      disabled={!selectedProduct || itemQuantity <= 0}
-                    >
-                      Add Item
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Order Items */}
-              {orderItems.length > 0 && (
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>Order Items</Typography>
-                  <List>
-                    {orderItems.map((item) => {
-                      const product = products.find(p => p.id === item.productId);
-                      return (
-                        <ListItem key={item.productId} divider>
-                                                      <ListItemText
-                              primary={product?.name || 'Unknown Product'}
-                              secondary={`SKU: ${product?.sku || 'N/A'} | Price: ${formatCurrency(item.unitPrice)}`}
-                            />
-                          <ListItemSecondaryAction>
-                            <Box display="flex" alignItems="center" gap={2}>
-                              <TextField
-                                size="small"
-                                label="Qty"
-                                type="number"
-                                value={item.quantity}
-                                onChange={(e) => updateItemQuantity(item.productId, Number(e.target.value))}
-                                inputProps={{ min: 1 }}
-                                sx={{ width: 80 }}
-                              />
-                              {product?.hasWarranty && (
-                                <Tooltip title="Add Serial Numbers">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => handleSerialNumberInput(item)}
-                                    color="primary"
-                                  >
-                                    <Search />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              <Typography variant="body2">
-                                {formatCurrency(Number(item.total) || 0)}
-                              </Typography>
-                              <IconButton
-                                size="small"
-                                onClick={() => removeItemFromOrder(item.productId)}
-                                color="error"
-                              >
-                                <Remove />
-                              </IconButton>
-                            </Box>
-                          </ListItemSecondaryAction>
-                        </ListItem>
-                      );
-                    })}
-                  </List>
-                  <Box display="flex" justifyContent="flex-end" mt={2}>
-                    <Typography variant="h6">
-                      Total: {formatCurrency(calculateOrderTotal())}
-                    </Typography>
-                  </Box>
-                </Grid>
-              )}
-
-              {/* Discount Section */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>Discount</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth>
-                      <InputLabel>Discount Type</InputLabel>
-                      <Select
-                        value={discountType}
-                        onChange={(e) => setDiscountType(e.target.value as 'AMOUNT' | 'PERCENTAGE')}
-                        label="Discount Type"
-                      >
-                        <MenuItem value="AMOUNT">Fixed Amount</MenuItem>
-                        <MenuItem value="PERCENTAGE">Percentage</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      fullWidth
-                      label={`Discount ${discountType === 'PERCENTAGE' ? '(%)' : '(Amount)'}`}
-                      type="number"
-                      value={discountAmount}
-                      onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                      inputProps={{ 
-                        min: 0, 
-                        max: discountType === 'PERCENTAGE' ? 100 : undefined,
-                        step: discountType === 'PERCENTAGE' ? 1 : 0.01 
-                      }}
-                      InputProps={{
-                        startAdornment: discountType === 'AMOUNT' ? (
-                          <InputAdornment position="start">{getSettingValue('CURRENCY', 'USD')}</InputAdornment>
-                        ) : (
-                          <InputAdornment position="start">%</InputAdornment>
-                        ),
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Discount Amount: {formatCurrency(calculateDiscountAmount())}
-                      </Typography>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* Order Summary */}
-              <Grid item xs={12}>
-                <Divider />
-                <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={6}>
-                      <Typography variant="body2">Subtotal:</Typography>
-                    </Grid>
-                    <Grid item xs={6} sx={{ textAlign: 'right' }}>
-                      <Typography variant="body2">
-                        {formatCurrency(orderItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0))}
-                      </Typography>
-                    </Grid>
-                    {discountAmount > 0 && (
-                      <>
-                        <Grid item xs={6}>
-                          <Typography variant="body2" color="success.main">
-                            Discount ({discountType === 'PERCENTAGE' ? `${discountAmount}%` : formatCurrency(discountAmount)}):
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={6} sx={{ textAlign: 'right' }}>
-                          <Typography variant="body2" color="success.main">
-                            -{formatCurrency(calculateDiscountAmount())}
-                          </Typography>
-                        </Grid>
-                      </>
-                    )}
-                    <Grid item xs={6}>
-                      <Typography variant="h6">Total:</Typography>
-                    </Grid>
-                    <Grid item xs={6} sx={{ textAlign: 'right' }}>
-                      <Typography variant="h6" color="primary">
-                        {formatCurrency(calculateOrderTotal())}
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </Box>
-              </Grid>
-
-              {/* Payment Section */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>Payment</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Payment Amount"
-                      type="number"
-                      value={paymentAmount}
-                      onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                      inputProps={{ min: 0, step: 0.01 }}
-                      InputProps={{
-                        startAdornment: <InputAdornment position="start">{getSettingValue('CURRENCY', 'USD')}</InputAdornment>,
-                      }}
-                      helperText={`Order Total: ${formatCurrency(calculateOrderTotal())}`}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>Payment Method</InputLabel>
-                      <Select
-                        value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
-                        label="Payment Method"
-                      >
-                        <MenuItem value="CASH">Cash</MenuItem>
-                        <MenuItem value="CARD">Card</MenuItem>
-                        <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
-                        <MenuItem value="CHECK">Check</MenuItem>
-                        <MenuItem value="DIGITAL_WALLET">Digital Wallet</MenuItem>
-                        <MenuItem value="BKASH">bKash</MenuItem>
-                        <MenuItem value="OTHER">Other</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Divider />
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseDialog} disabled={submitting}>Cancel</Button>
-            <Button type="submit" variant="contained" disabled={orderItems.length === 0 || submitting}>
-              {submitting ? (
-                <>
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  Creating...
-                </>
-              ) : (
-                'Create Order'
-              )}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-
       {/* Payment Dialog */}
       <Dialog open={openPaymentDialog} onClose={handleClosePaymentDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
@@ -1887,30 +1098,6 @@ const OrdersPage: React.FC = () => {
           >
             Process Payment
           </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Serial Number Dialog */}
-      <Dialog open={openSerialDialog} onClose={handleSerialNumberCancel} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          Add Serial Numbers - {selectedItemForSerial?.product?.name}
-        </DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            multiline
-            rows={4}
-            label="Serial Numbers"
-            value={serialNumbersInput}
-            onChange={(e) => setSerialNumbersInput(e.target.value)}
-            placeholder="Enter serial numbers separated by commas (e.g., SN001, SN002, SN003)"
-            helperText="Separate multiple serial numbers with commas"
-            sx={{ mt: 2 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleSerialNumberCancel}>Cancel</Button>
-          <Button onClick={handleSerialNumberSave} variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -7,7 +7,6 @@ import {
   CardContent,
   Typography,
   Button,
-  ButtonBase,
   Chip,
   List,
   ListItem,
@@ -26,7 +25,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useAuth } from '@/hooks/useAuth';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { apiService } from '@/services/api';
-import { alpha } from '@mui/material/styles';
 import { useNavigation } from '@/hooks/useNavigation';
 import { quickActionKeys, type NavItem } from '@/config/navigation';
 
@@ -71,63 +69,6 @@ interface DashboardStats {
     color: string;
   }>;
 }
-
-interface QuickActionTileProps {
-  item: NavItem;
-  onClick: () => void;
-}
-
-/** Large, tappable shortcut used on the dashboard. */
-const QuickActionTile: React.FC<QuickActionTileProps> = ({ item, onClick }) => {
-  const Icon = item.icon;
-  return (
-    <ButtonBase
-      onClick={onClick}
-      sx={{
-        width: '100%',
-        height: '100%',
-        p: 2,
-        borderRadius: 3.5,
-        border: 1,
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        textAlign: 'left',
-        gap: 1.5,
-        transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.15s',
-        '&:hover, &:focus-visible': {
-          borderColor: 'primary.main',
-          boxShadow: (theme) => `0 6px 18px ${alpha(theme.palette.primary.main, 0.15)}`,
-          transform: 'translateY(-2px)',
-        },
-      }}
-    >
-      <Box
-        sx={{
-          width: 48,
-          height: 48,
-          borderRadius: 2.5,
-          display: 'grid',
-          placeItems: 'center',
-          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
-          color: 'primary.main',
-        }}
-      >
-        <Icon />
-      </Box>
-      <Box>
-        <Typography fontWeight={700}>{item.label}</Typography>
-        {item.hint && (
-          <Typography variant="body2" color="text.secondary">
-            {item.hint}
-          </Typography>
-        )}
-      </Box>
-    </ButtonBase>
-  );
-};
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
@@ -248,15 +189,26 @@ const DashboardPage: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Quick actions: big tiles for everyday tasks, filtered by permission */}
+      {/* Quick links: plain buttons for everyday tasks, filtered by permission */}
       {quickActions.length > 0 && (
-        <Grid container spacing={2} mb={4}>
-          {quickActions.map((item) => (
-            <Grid item xs={6} sm={4} md={3} key={item.key}>
-              <QuickActionTile item={item} onClick={() => navigate(item.path)} />
-            </Grid>
-          ))}
-        </Grid>
+        <Box display="flex" flexWrap="wrap" gap={1.5} mb={4}>
+          {quickActions.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.key}
+                component={RouterLink}
+                to={item.path}
+                variant="outlined"
+                size="large"
+                startIcon={<Icon />}
+                sx={{ minHeight: 48 }}
+              >
+                {item.label}
+              </Button>
+            );
+          })}
+        </Box>
       )}
 
       {/* Key Metrics */}

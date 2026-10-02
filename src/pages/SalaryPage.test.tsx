@@ -105,6 +105,7 @@ const report: MonthReport = {
     employees: 3,
     processedCount: 1,
     openCount: 2,
+    skippedCount: 0,
     baseSalary: 47000,
     payouts: 27000,
     deductions: 500,
@@ -217,6 +218,30 @@ describe('SalaryPage month report', () => {
     expect(within(dialog).getByText('Pay salary — September 2026')).toBeInTheDocument();
     expect(within(dialog).getByText('Remaining for this month')).toBeInTheDocument();
     expect(within(dialog).getByText('Tk -2,000')).toBeInTheDocument();
+  });
+
+  it('skips the month for an employee who was not here the full month', async () => {
+    vi.mocked(apiService.post).mockResolvedValue({
+      success: true,
+      data: { ...report.rows[0], id: 'm1', status: 'SKIPPED', amount: 20000, advances: 8000, paidAmount: 0, carryForward: 0 },
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const rahimRow = await screen.findByTestId('row-u1');
+    await user.click(within(rahimRow).getByRole('button', { name: 'Skip' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Skip September 2026')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Reason (optional)'), 'Joined on the 20th');
+    await user.click(within(dialog).getByRole('button', { name: 'Skip this month' }));
+
+    expect(apiService.post).toHaveBeenCalledWith('/salary/skip', {
+      userId: 'u1',
+      month: 9,
+      year: 2026,
+      reason: 'Joined on the 20th',
+    });
   });
 
   it('hides processing and base-salary actions from non-admins', async () => {

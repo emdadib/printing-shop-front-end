@@ -19,7 +19,8 @@ export interface PersonRef {
 }
 
 export type PayoutStatus = 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED' | 'CANCELLED'
-export type RowStatus = 'OPEN' | 'PROCESSED'
+/** OPEN = not closed yet; PROCESSED = salary settled; SKIPPED = closed without salary. */
+export type RowStatus = 'OPEN' | 'PROCESSED' | 'SKIPPED'
 
 export interface SalaryProfile {
   id: string
@@ -80,6 +81,7 @@ export interface MonthTotals {
   employees: number
   processedCount: number
   openCount: number
+  skippedCount: number
   baseSalary: number
   payouts: number
   deductions: number
@@ -104,7 +106,7 @@ export interface MonthReport {
 export interface ProcessedMonth {
   id: string
   userId: string
-  status: 'PENDING' | 'PAID' | 'CANCELLED'
+  status: 'PENDING' | 'PAID' | 'CANCELLED' | 'SKIPPED'
   amount: number
   deductions: number
   bonuses: number
@@ -195,6 +197,13 @@ export interface ProcessMonthData {
   notes?: string
 }
 
+export interface SkipMonthData {
+  userId: string
+  month: number
+  year: number
+  reason?: string
+}
+
 export interface SetBaseSalaryData {
   userId: string
   baseSalary: number
@@ -228,8 +237,11 @@ export const salaryApi = {
   processMonth: (data: ProcessMonthData) =>
     apiService.post<ApiResponse<ProcessedMonth>>('/salary/process', data),
 
-  processAll: (month: number, year: number, notes?: string) =>
-    apiService.post<ApiResponse<ProcessAllResult>>('/salary/process-all', { month, year, notes }),
+  processAll: (month: number, year: number, options: { userIds?: string[]; notes?: string } = {}) =>
+    apiService.post<ApiResponse<ProcessAllResult>>('/salary/process-all', { month, year, ...options }),
+
+  /** Close a month without salary (employee not present for the full month). */
+  skipMonth: (data: SkipMonthData) => apiService.post<ApiResponse<ProcessedMonth>>('/salary/skip', data),
 
   undoProcess: (id: string) => apiService.delete<MessageResponse>(`/salary/process/${id}`),
 }

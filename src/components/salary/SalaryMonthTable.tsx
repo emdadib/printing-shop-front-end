@@ -39,9 +39,14 @@ export interface SalaryMonthTableProps {
   onProcess: (row: EmployeeMonthRow) => void
   onView: (row: EmployeeMonthRow) => void
   onEditBase: (row: EmployeeMonthRow) => void
+  /** Admin: close the month without salary (not present for the full month). */
+  onSkip: (row: EmployeeMonthRow) => void
 }
 
 const StatusChip: React.FC<{ row: EmployeeMonthRow }> = ({ row }) => {
+  if (row.status === 'SKIPPED') {
+    return <Chip size="small" variant="outlined" label="Skipped" />
+  }
   if (row.status === 'PROCESSED') {
     return <Chip size="small" color="success" icon={<CheckCircleIcon />} label="Processed" />
   }
@@ -81,8 +86,9 @@ const RowActions: React.FC<{
   onProcess: () => void
   onView: () => void
   onEditBase: () => void
+  onSkip: () => void
   compact?: boolean
-}> = ({ row, canProcess, canPay, onPay, onProcess, onView, onEditBase, compact }) => {
+}> = ({ row, canProcess, canPay, onPay, onProcess, onView, onEditBase, onSkip, compact }) => {
   const open = row.status === 'OPEN'
   const processable = open && row.hasProfile && row.pendingPayoutsCount === 0
   return (
@@ -101,6 +107,13 @@ const RowActions: React.FC<{
               Process
             </Button>
           </span>
+        </Tooltip>
+      )}
+      {canProcess && open && (
+        <Tooltip describeChild title="Close this month without salary (not here for the full month)">
+          <Button size="small" color="inherit" onClick={onSkip}>
+            Skip
+          </Button>
         </Tooltip>
       )}
       <Tooltip describeChild title="Payouts and history">
@@ -145,6 +158,7 @@ export const SalaryMonthTable: React.FC<SalaryMonthTableProps> = ({
   onProcess,
   onView,
   onEditBase,
+  onSkip,
 }) => {
   if (isMobile) {
     return (
@@ -199,6 +213,7 @@ export const SalaryMonthTable: React.FC<SalaryMonthTableProps> = ({
                   onProcess={() => onProcess(row)}
                   onView={() => onView(row)}
                   onEditBase={() => onEditBase(row)}
+                  onSkip={() => onSkip(row)}
                 />
               </Box>
             </CardContent>
@@ -259,6 +274,7 @@ export const SalaryMonthTable: React.FC<SalaryMonthTableProps> = ({
                   onProcess={() => onProcess(row)}
                   onView={() => onView(row)}
                   onEditBase={() => onEditBase(row)}
+                  onSkip={() => onSkip(row)}
                 />
               </TableCell>
             </TableRow>
@@ -281,7 +297,10 @@ export const SalaryMonthTable: React.FC<SalaryMonthTableProps> = ({
               )}
             </TableCell>
             <TableCell align="center">
-              <Typography variant="caption">{totals.processedCount}/{totals.employees} processed</Typography>
+              <Typography variant="caption">
+                {totals.processedCount}/{totals.employees} processed
+                {totals.skippedCount > 0 ? ` · ${totals.skippedCount} skipped` : ''}
+              </Typography>
             </TableCell>
             <TableCell />
           </TableRow>

@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -9,6 +10,8 @@ import {
   DialogTitle,
   List,
   ListItem,
+  ListItemButton,
+  ListItemIcon,
   ListItemText,
   Stack,
   Typography,
@@ -25,18 +28,19 @@ export interface ProcessAllDialogProps {
   periodUnfinished: boolean
   submitting: boolean
   format: (amount: number) => string
-  onConfirm: () => void
+  /** Called with the employees that are ticked. */
+  onConfirm: (userIds: string[]) => void
 }
 
-const skipReason = (row: EmployeeMonthRow): string | null => {
+const blockedReason = (row: EmployeeMonthRow): string | null => {
   if (!row.hasProfile) return 'no base salary'
   if (row.pendingPayoutsCount > 0) return `${row.pendingPayoutsCount} payout(s) waiting`
   return null
 }
 
 /**
- * Settles every open employee for the month using the attendance deduction
- * and no bonus. Anyone who needs a manual touch is skipped and listed.
+ * Settles the ticked employees for the month using the attendance deduction
+ * and no bonus. Untick anyone who should wait (or be skipped instead).
  */
 export const ProcessAllDialog: React.FC<ProcessAllDialogProps> = ({
   open,
@@ -48,18 +52,32 @@ export const ProcessAllDialog: React.FC<ProcessAllDialogProps> = ({
   format,
   onConfirm,
 }) => {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (open) setSelected(new Set(rows.filter(r => !blockedReason(r)).map(r => r.userId)))
+  }, [open, rows])
+
+  const toggle = (userId: string) =>
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+
   const summary = useMemo(() => {
     let pay = 0
     let owe = 0
-    let ready = 0
+    let count = 0
     for (const row of rows) {
-      if (skipReason(row)) continue
-      ready += 1
+      if (!selected.has(row.userId)) continue
+      count += 1
       pay += row.paidAmount
       owe += row.carryForward
     }
-    return { pay, owe, ready }
-  }, [rows])
+    return { pay, owe, count }
+  }, [rows, selected])
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -72,14 +90,14 @@ export const ProcessAllDialog: React.FC<ProcessAllDialogProps> = ({
             </Alert>
           )}
           <Alert severity="info">
-            Each employee is settled with their attendance deduction and no bonus. To add a bonus or change a
-            deduction, process that employee on their own instead.
+            Ticked employees are settled with their attendance deduction and no bonus. Untick anyone who should
+            wait. For someone who was not here the full month, close the dialog and use Skip on their row instead.
           </Alert>
 
           <Stack direction="row" spacing={3}>
             <div>
               <Typography variant="caption" color="text.secondary">Employees</Typography>
-              <Typography variant="h6" fontWeight={700}>{summary.ready}</Typography>
+              <Typography variant="h6" fontWeight={700}>{summary.count}</Typography>
             </div>
             <div>
               <Typography variant="caption" color="text.secondary">Cash to pay now</Typography>
@@ -95,23 +113,42 @@ export const ProcessAllDialog: React.FC<ProcessAllDialogProps> = ({
 
           <List dense disablePadding>
             {rows.map(row => {
-              const skip = skipReason(row)
+              const blocked = blockedReason(row)
               const net = describeNet(row)
+              const checked = selected.has(row.userId)
               return (
-                <ListItem key={row.userId} disableGutters divider>
-                  <ListItemText
-                    primary={fullName(row.user)}
-                    secondary={skip ? `Skipped: ${skip}` : net.label}
-                    secondaryTypographyProps={{ color: skip ? 'error.main' : 'text.secondary' }}
-                  />
-                  {!skip && (
-                    <Chip
-                      size="small"
-                      label={net.tone === 'even' ? '—' : format(net.amount)}
-                      color={net.tone === 'pay' ? 'success' : net.tone === 'owe' ? 'error' : 'default'}
-                      variant={net.tone === 'even' ? 'outlined' : 'filled'}
+                <ListItem key={row.userId} disableGutters divider disablePadding>
+                  <ListItemButton
+                    dense
+                    disabled={!!blocked}
+                    onClick={() => toggle(row.userId)}
+                    sx={{ px: 0.5 }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      <Checkbox
+                        edge="start"
+                        size="small"
+                        checked={checked && !blocked}
+                        disabled={!!blocked}
+                        tabIndex={-1}
+                        disableRipple
+                        inputProps={{ 'aria-label': `Process ${fullName(row.user)}` }}
+                      />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={fullName(row.user)}
+                      secondary={blocked ? `Cannot process: ${blocked}` : net.label}
+                      secondaryTypographyProps={{ color: blocked ? 'error.main' : 'text.secondary' }}
                     />
-                  )}
+                    {!blocked && (
+                      <Chip
+                        size="small"
+                        label={net.tone === 'even' ? '—' : format(net.amount)}
+                        color={net.tone === 'pay' ? 'success' : net.tone === 'owe' ? 'error' : 'default'}
+                        variant={net.tone === 'even' ? 'outlined' : 'filled'}
+                      />
+                    )}
+                  </ListItemButton>
                 </ListItem>
               )
             })}
@@ -120,8 +157,13 @@ export const ProcessAllDialog: React.FC<ProcessAllDialogProps> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={submitting}>Cancel</Button>
-        <Button variant="contained" color="success" disabled={submitting || summary.ready === 0} onClick={onConfirm}>
-          {submitting ? 'Processing…' : `Process ${summary.ready} employee${summary.ready === 1 ? '' : 's'}`}
+        <Button
+          variant="contained"
+          color="success"
+          disabled={submitting || summary.count === 0}
+          onClick={() => onConfirm(Array.from(selected))}
+        >
+          {submitting ? 'Processing…' : `Process ${summary.count} employee${summary.count === 1 ? '' : 's'}`}
         </Button>
       </DialogActions>
     </Dialog>

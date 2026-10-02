@@ -17,6 +17,13 @@ describe('describeNet', () => {
     expect(describeNet({ status: 'PROCESSED', paidAmount: 0, carryForward: 300 }).label).toBe('Owes the company');
   });
 
+  it('marks a skipped month and keeps earlier debt visible', () => {
+    expect(describeNet({ status: 'SKIPPED', paidAmount: 0, carryForward: 0 }).label).toBe('Skipped · no salary this month');
+    expect(describeNet({ status: 'SKIPPED', paidAmount: 0, carryForward: 400 })).toEqual({
+      tone: 'owe', amount: 400, label: 'Skipped · still owes',
+    });
+  });
+
   it('is even when nothing is left either way', () => {
     expect(describeNet({ status: 'OPEN', paidAmount: 0, carryForward: 0 }).tone).toBe('even');
   });
@@ -69,7 +76,7 @@ describe('CSV export', () => {
         },
       ],
       totals: {
-        employees: 1, processedCount: 0, openCount: 1, baseSalary: 20000, payouts: 8000, deductions: 500,
+        employees: 1, processedCount: 0, openCount: 1, skippedCount: 0, baseSalary: 20000, payouts: 8000, deductions: 500,
         bonuses: 0, previousBalance: 0, netAmount: 11500, toPayAtProcessing: 11500, paidAtProcessing: 0,
         owed: 0, projectedOwed: 0, cashOut: 8000,
       },
