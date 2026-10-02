@@ -47,6 +47,7 @@ import { ProcessMonthDialog } from '@/components/salary/ProcessMonthDialog'
 import { ProcessAllDialog } from '@/components/salary/ProcessAllDialog'
 import { EmployeeSalaryDialog } from '@/components/salary/EmployeeSalaryDialog'
 import { SetBaseSalaryDialog } from '@/components/salary/SetBaseSalaryDialog'
+import { SkipMonthDialog } from '@/components/salary/SkipMonthDialog'
 
 type SnackbarState = { open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }
 
@@ -66,7 +67,8 @@ const errorMessage = (error: unknown, fallback: string): string =>
  * Salary — one screen for the whole month:
  *   1. give salary to an employee whenever they need it ("Pay")
  *   2. at month end, "Process" settles everyone: pays what is left or carries
- *      the shortfall forward
+ *      the shortfall forward; "Skip" closes a month without salary for someone
+ *      who was not here the full month
  * The table doubles as the monthly report; CSV export and per-employee history
  * live behind the action buttons.
  */
@@ -89,6 +91,7 @@ const SalaryPage: React.FC = () => {
   const [processAllOpen, setProcessAllOpen] = useState(false)
   const [viewOpen, setViewOpen] = useState(false)
   const [baseOpen, setBaseOpen] = useState(false)
+  const [skipOpen, setSkipOpen] = useState(false)
   const [baseInitial, setBaseInitial] = useState<{ userId: string; baseSalary: number } | null>(null)
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' })
@@ -162,7 +165,16 @@ const SalaryPage: React.FC = () => {
     onError: e => notify(errorMessage(e, 'Could not process this month'), 'error'),
   })
 
-  const processAll = useMutation(() => salaryApi.processAll(month, year), {
+  const skipMonth = useMutation(salaryApi.skipMonth, {
+    onSuccess: res => {
+      refresh()
+      setSkipOpen(false)
+      notify(`${fullName(res.data.user)}: ${periodLabel} skipped, no salary`)
+    },
+    onError: e => notify(errorMessage(e, 'Could not skip this month'), 'error'),
+  })
+
+  const processAll = useMutation((userIds: string[]) => salaryApi.processAll(month, year, { userIds }), {
     onSuccess: res => {
       refresh()
       setProcessAllOpen(false)
@@ -216,6 +228,7 @@ const SalaryPage: React.FC = () => {
   const openPay = (row?: EmployeeMonthRow) => { setSelectedUserId(row?.userId ?? null); setPayOpen(true) }
   const openProcess = (row: EmployeeMonthRow) => { setSelectedUserId(row.userId); setProcessOpen(true) }
   const openView = (row: EmployeeMonthRow) => { setSelectedUserId(row.userId); setViewOpen(true) }
+  const openSkip = (row: EmployeeMonthRow) => { setSelectedUserId(row.userId); setSkipOpen(true) }
   const openBase = (row?: EmployeeMonthRow) => {
     setBaseInitial(row && row.hasProfile ? { userId: row.userId, baseSalary: row.baseSalary } : null)
     setBaseOpen(true)
@@ -223,9 +236,12 @@ const SalaryPage: React.FC = () => {
 
   const confirmUndo = (row: EmployeeMonthRow) => {
     if (!row.processed) return
+    const skipped = row.status === 'SKIPPED'
     ask({
-      title: 'Undo processing',
-      message: `Reopen ${periodLabel} for ${fullName(row.user)}? The processed record is removed and its cash entry reversed.`,
+      title: skipped ? 'Undo skip' : 'Undo processing',
+      message: skipped
+        ? `Reopen ${periodLabel} for ${fullName(row.user)}? The skipped month is removed and can be processed again.`
+        : `Reopen ${periodLabel} for ${fullName(row.user)}? The processed record is removed and its cash entry reversed.`,
       confirmLabel: 'Undo',
       confirmColor: 'warning',
       onConfirm: () => { closeConfirm(); undoProcess.mutate(row.processed!.id) },
@@ -375,7 +391,7 @@ const SalaryPage: React.FC = () => {
             {totals && totals.employees > 0 && (
               <Chip
                 size="small"
-                label={`${totals.processedCount}/${totals.employees} processed`}
+                label={`${totals.processedCount}/${totals.employees} processed${totals.skippedCount ? ` · ${totals.skippedCount} skipped` : ''}`}
                 color={totals.openCount === 0 ? 'success' : 'default'}
                 variant={totals.openCount === 0 ? 'filled' : 'outlined'}
               />
@@ -403,7 +419,16 @@ const SalaryPage: React.FC = () => {
         </Stack>
 
         {reportQuery.isError ? (
-          <Alert severity="error">Could not load the salary report. Please try again.</Alert>
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => reportQuery.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            {errorMessage(reportQuery.error, 'Could not load the salary report. Check that the server is running and up to date.')}
+          </Alert>
         ) : rows.length === 0 ? (
           <Box textAlign="center" py={6}>
             <GroupIcon sx={{ fontSize: 64, color: 'text.disabled' }} />
@@ -431,6 +456,7 @@ const SalaryPage: React.FC = () => {
             onProcess={openProcess}
             onView={openView}
             onEditBase={openBase}
+            onSkip={openSkip}
           />
         )}
       </Paper>
@@ -467,7 +493,7 @@ const SalaryPage: React.FC = () => {
         periodUnfinished={periodUnfinished}
         submitting={processAll.isLoading}
         format={formatCurrency}
-        onConfirm={() => processAll.mutate()}
+        onConfirm={userIds => processAll.mutate(userIds)}
       />
 
       <EmployeeSalaryDialog
@@ -483,6 +509,7 @@ const SalaryPage: React.FC = () => {
         onPay={row => { setViewOpen(false); openPay(row) }}
         onProcess={row => { setViewOpen(false); openProcess(row) }}
         onUndoProcess={confirmUndo}
+        onSkip={row => { setViewOpen(false); openSkip(row) }}
         onDeletePayout={confirmDeletePayout}
         onHandOverPayout={p => handOverPayout.mutate(p.id)}
         onCancelPayout={p => cancelPayout.mutate(p.id)}
@@ -495,6 +522,16 @@ const SalaryPage: React.FC = () => {
         initial={baseInitial}
         submitting={setBaseSalary.isLoading}
         onSubmit={data => setBaseSalary.mutate(data)}
+      />
+
+      <SkipMonthDialog
+        open={skipOpen}
+        onClose={() => setSkipOpen(false)}
+        row={selectedRow}
+        periodLabel={periodLabel}
+        submitting={skipMonth.isLoading}
+        format={formatCurrency}
+        onSubmit={reason => selectedRow && skipMonth.mutate({ userId: selectedRow.userId, month, year, reason })}
       />
 
       <Dialog open={confirm.open} onClose={closeConfirm} maxWidth="xs" fullWidth>

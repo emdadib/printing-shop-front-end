@@ -32,7 +32,7 @@ import {
 } from '@mui/icons-material'
 import { useQuery } from 'react-query'
 import { salaryApi, type EmployeeMonthRow, type SalaryPayout } from '@/services/salaryApi'
-import { describeNet, downloadTextFile, employeeYearToCsv, fullName } from '@/utils/salaryReport'
+import { describeNet, downloadTextFile, employeeYearToCsv, fullName, rowStatusLabel } from '@/utils/salaryReport'
 
 export interface EmployeeSalaryDialogProps {
   open: boolean
@@ -47,6 +47,7 @@ export interface EmployeeSalaryDialogProps {
   onPay: (row: EmployeeMonthRow) => void
   onProcess: (row: EmployeeMonthRow) => void
   onUndoProcess: (row: EmployeeMonthRow) => void
+  onSkip: (row: EmployeeMonthRow) => void
   onDeletePayout: (payout: SalaryPayout) => void
   onHandOverPayout: (payout: SalaryPayout) => void
   onCancelPayout: (payout: SalaryPayout) => void
@@ -81,6 +82,7 @@ export const EmployeeSalaryDialog: React.FC<EmployeeSalaryDialogProps> = ({
   onPay,
   onProcess,
   onUndoProcess,
+  onSkip,
   onDeletePayout,
   onHandOverPayout,
   onCancelPayout,
@@ -106,6 +108,7 @@ export const EmployeeSalaryDialog: React.FC<EmployeeSalaryDialogProps> = ({
 
   const net = describeNet(row)
   const isOpen = row.status === 'OPEN'
+  const skipped = row.status === 'SKIPPED'
   const processable = isOpen && row.hasProfile && row.pendingPayoutsCount === 0
 
   return (
@@ -129,9 +132,9 @@ export const EmployeeSalaryDialog: React.FC<EmployeeSalaryDialogProps> = ({
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
-                color={isOpen ? 'warning' : 'success'}
-                variant={isOpen ? 'outlined' : 'filled'}
-                label={isOpen ? 'Open' : 'Processed'}
+                color={isOpen ? 'warning' : skipped ? 'default' : 'success'}
+                variant={isOpen || skipped ? 'outlined' : 'filled'}
+                label={rowStatusLabel(row.status)}
               />
               {row.processed?.paidAt && (
                 <Typography variant="body2" color="text.secondary">
@@ -334,7 +337,7 @@ export const EmployeeSalaryDialog: React.FC<EmployeeSalaryDialogProps> = ({
                             <TableCell align="center">
                               <Chip
                                 size="small"
-                                label={processed ? 'Processed' : 'Open'}
+                                label={rowStatusLabel(m.status)}
                                 color={processed ? 'success' : 'default'}
                                 variant={processed ? 'filled' : 'outlined'}
                               />
@@ -353,9 +356,12 @@ export const EmployeeSalaryDialog: React.FC<EmployeeSalaryDialogProps> = ({
 
       <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
         {tab === 0 && canProcess && !isOpen && (
-          <Tooltip describeChild title="Reopen the month: removes the processed record and reverses its cash entry">
+          <Tooltip
+            describeChild
+            title={skipped ? 'Reopen the month so it can be processed' : 'Reopen the month: removes the processed record and reverses its cash entry'}
+          >
             <Button color="warning" startIcon={<UndoIcon />} onClick={() => onUndoProcess(row)}>
-              Undo processing
+              {skipped ? 'Undo skip' : 'Undo processing'}
             </Button>
           </Tooltip>
         )}
@@ -363,6 +369,9 @@ export const EmployeeSalaryDialog: React.FC<EmployeeSalaryDialogProps> = ({
         <Button onClick={onClose}>Close</Button>
         {tab === 0 && canPay && isOpen && (
           <Button variant="outlined" onClick={() => onPay(row)}>Pay salary</Button>
+        )}
+        {tab === 0 && canProcess && isOpen && (
+          <Button color="inherit" onClick={() => onSkip(row)}>Skip month</Button>
         )}
         {tab === 0 && canProcess && isOpen && (
           <Button variant="contained" color="success" disabled={!processable} onClick={() => onProcess(row)}>

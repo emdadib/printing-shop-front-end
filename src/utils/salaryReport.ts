@@ -1,4 +1,4 @@
-import type { EmployeeMonthRow, EmployeeYear, MonthReport } from '@/services/salaryApi'
+import type { EmployeeMonthRow, EmployeeYear, MonthReport, RowStatus } from '@/services/salaryApi'
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -7,6 +7,9 @@ export const MONTH_NAMES = [
 
 export const fullName = (p: { firstName: string; lastName: string }) =>
   `${p.firstName} ${p.lastName}`.trim()
+
+export const rowStatusLabel = (status: RowStatus): string =>
+  status === 'PROCESSED' ? 'Processed' : status === 'SKIPPED' ? 'Skipped' : 'Open'
 
 /** Today's date as YYYY-MM-DD in local time (for date inputs). */
 export const todayIso = (): string => {
@@ -33,6 +36,11 @@ export type NetTone = 'pay' | 'owe' | 'even'
 export const describeNet = (
   row: Pick<EmployeeMonthRow, 'status' | 'paidAmount' | 'carryForward'>
 ): { tone: NetTone; amount: number; label: string } => {
+  if (row.status === 'SKIPPED') {
+    return row.carryForward > 0
+      ? { tone: 'owe', amount: row.carryForward, label: 'Skipped · still owes' }
+      : { tone: 'even', amount: 0, label: 'Skipped · no salary this month' }
+  }
   if (row.paidAmount > 0) {
     return {
       tone: 'pay',
@@ -73,7 +81,7 @@ export function monthReportToCsv(report: MonthReport): string {
       csvLine([
         fullName(row.user),
         row.user.role ?? '',
-        row.status === 'PROCESSED' ? 'Processed' : 'Open',
+        rowStatusLabel(row.status),
         row.baseSalary,
         row.payoutsTotal,
         row.payoutsCount,
@@ -90,7 +98,7 @@ export function monthReportToCsv(report: MonthReport): string {
   const t = report.totals
   lines.push(
     csvLine([
-      'TOTAL', '', `${t.processedCount}/${t.employees} processed`, t.baseSalary, t.payouts, '',
+      'TOTAL', '', `${t.processedCount}/${t.employees} processed${t.skippedCount ? `, ${t.skippedCount} skipped` : ''}`, t.baseSalary, t.payouts, '',
       t.deductions, t.bonuses, t.previousBalance, t.netAmount, t.paidAtProcessing, t.owed, '',
     ])
   )
@@ -107,7 +115,7 @@ export function employeeYearToCsv(data: EmployeeYear): string {
     lines.push(
       csvLine([
         m.label,
-        m.status === 'PROCESSED' ? 'Processed' : 'Open',
+        rowStatusLabel(m.status),
         m.baseSalary,
         m.payoutsTotal,
         m.deductions,
